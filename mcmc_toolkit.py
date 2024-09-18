@@ -2,7 +2,7 @@ import os, sys, json, emcee
 import numpy as np
 import logging
 from collections import OrderedDict
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional, Callable, Union
 from dataclasses import dataclass, field
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -197,47 +197,78 @@ class MCMC:
         
         return within_chain_var, mean_chain, chain_length
 
-    def plot_walkers(self,samplers,name, save = True):
-        '''
-        Get a list of samplers and make the 1D plot. The input must be an array [n_samplers]
-        '''
-        #Get the number of samplers
+    def plot_walkers(self, handle: str, gelman_rubins: Optional[Dict[str, Any]] = None, 
+        save: bool = True) -> None:
+        """
+        Plot the walkers' positions over steps.
+
+        Args:
+            handle (str): Handle used in the MCMC analysis.
+            gelman_rubins (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
+            criteria. Defaults to None.
+            save (bool, optional): Whether to save the plot to a file. Defaults to True.
+        """
+        chain_dir = os.path.join(os.getcwd(), 'chains')
+
+        if gelman_rubins:
+            N = gelman_rubins['N']
+            samplers = []
+            for i in range(N):
+                filename = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
+                backend = emcee.backends.HDFBackend(filename, read_only=True)
+                samplers.append(backend)
+        else:
+            filename = os.path.join(chain_dir, f'{handle}.h5')
+            backend = emcee.backends.HDFBackend(filename, read_only=True)
+            samplers = [backend]
+
         N_samples = len(samplers)
+        fig, axes = plt.subplots(self.ndim, figsize=(16, self.ndim * 3), sharex=True)
+        color = cm.brg(np.linspace(0, 1, N_samples))
 
-        #Start the figure
-        fig, axes = plt.subplots(self.ndim, figsize=(16, self.ndim*3), sharex=True)
-
-        #Get the colors for the plots
-        color=cm.brg(np.linspace(0,1,N_samples))
-
-        #Iterate over the backends and plot the walkers
-        for i in range(0,N_samples):
+        for i in range(N_samples):
             chain = samplers[i].get_chain()
-            for index,this_param in enumerate(self.labels):
+            for index, this_param in enumerate(self.labels):
                 ax = axes[index]
-                ax.plot(chain[:,:,index],alpha=0.5,color=color[i])
-                ax.set_ylabel(this_param,size=35)
+                ax.plot(chain[:, :, index], alpha=0.5, color=color[i])
+                ax.set_ylabel(this_param, size=35)
             del chain
 
         if save:
             fig.tight_layout()
-            #directory to figures
-            this_dir = os.getcwd()
-            figures_dir = this_dir+'/figures/'
+            figures_dir = os.path.join(os.getcwd(), 'figures')
             try_mkdir('figures')
-            plt.savefig(figures_dir+name+'_walkers.pdf')
+            plt.savefig(os.path.join(figures_dir, f'{handle}_walkers.pdf'))
             plt.close('all')
+            self.logger.info(f'Walkers plot saved to {figures_dir}/{handle}_walkers.pdf')
         else:
             plt.show()
 
-    def plot_1d(self, samplers: List, name: str) -> None:
+    def plot_1d(self, handle: str, gelman_rubins: Optional[Dict[str, Any]] = None,
+        save: bool = True) -> None:
         """
-        Plot 1D distributions for the given samplers.
+        Plot 1D distributions for the given chains.
 
         Args:
-            samplers (List): List of sampler objects.
-            name (str): Name for the saved plot file.
+            handle (str): Handle used in the MCMC analysis.
+            gelman_rubins (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
+            criteria. Defaults to None.
+            save (bool, optional): Whether to save the plot to a file. Defaults to True.
         """
+        chain_dir = os.path.join(os.getcwd(), 'chains')
+
+        if gelman_rubins:
+            N = gelman_rubins['N']
+            samplers = []
+            for i in range(N):
+                filename = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
+                backend = emcee.backends.HDFBackend(filename, read_only=True)
+                samplers.append(backend)
+        else:
+            filename = os.path.join(chain_dir, f'{handle}.h5')
+            backend = emcee.backends.HDFBackend(filename, read_only=True)
+            samplers = [backend]
+
         plot_settings = {
             'ignore_rows': 0.5,
             'fine_bins': 1000,
@@ -246,9 +277,6 @@ class MCMC:
         }
         N_samples = len(samplers)
         samples = []
-        chain = samplers[0].get_chain()
-        chain_length = chain.shape[0]
-        del chain
 
         for i in range(N_samples):
             chain = samplers[i].get_chain(flat=True)
@@ -265,11 +293,14 @@ class MCMC:
 
         figures_dir = os.path.join(os.getcwd(), 'figures')
         try_mkdir('figures')
-        g1.export(os.path.join(figures_dir, f'{name}_1D_ALL.png'))
-        plt.close('all')
-        self.logger.info(f'1D plot saved to {figures_dir}/{name}_1D_ALL.png')
+        if save:
+            g1.export(os.path.join(figures_dir, f'{handle}_1D_ALL.png'))
+            plt.close('all')
+            self.logger.info(f'1D plot saved to {figures_dir}/{handle}_1D_ALL.png')
+        else:
+            plt.show()
 
-    def plot_corner(self, handle: str, gelman: Optional[Dict] = None, save: Optional[str] = None, 
+    def plot_corner(self, handle: str, gelman_rubins: Optional[Dict] = None, save: Optional[str] = None, 
     width_inch: int = 15, ranges: Dict = {}, plot_settings: Dict = {'fine_bins': 1000, 
     'fine_bins_2D': 1500, 'smooth_scale_1D': 0.3, 'smooth_scale_2D': 0.2}) -> None:
         """
@@ -289,8 +320,8 @@ class MCMC:
         """
         chain_dir = os.path.join(os.getcwd(), 'chains')
         
-        if gelman is not None:
-            N_chains = gelman['N']
+        if gelman_rubins is not None:
+            N_chains = gelman_rubins['N']
             for i in range(N_chains):
                 name = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
@@ -329,7 +360,7 @@ class MCMC:
             plt.close('all')
             self.logger.info(f'Corner plot saved to {figures_dir}/{save}.png')
 
-    def plot_CorrMatrix(self, handle: str, gelman: Optional[Dict] = None) -> None:
+    def plot_CorrMatrix(self, handle: str, gelman_rubins: Optional[Dict] = None) -> None:
         """
         Plot the correlation matrix for the given chains.
 
@@ -339,8 +370,8 @@ class MCMC:
         """
         chain_dir = os.path.join(os.getcwd(), 'chains')
 
-        if gelman is not None:
-            N_chains = gelman['N']
+        if gelman_rubins is not None:
+            N_chains = gelman_rubins['N']
             for i in range(N_chains):
                 name = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
@@ -409,189 +440,164 @@ class MCMC:
                     return False
             return True
 
-
-    def run(self, name: str, steps: int, pos: np.ndarray, loglikelihood: Callable, 
-    pool: Optional[Any] = None, new: bool = True, plots: bool = False, 
-    args: Optional[List[Any]] = None, a: float = 2, metric_interval: int = 25) -> None:
+    def run(self, name: str, steps: int, pos: Union[np.ndarray, List[np.ndarray]], 
+    loglikelihood: Callable, pool: Optional[Any] = None, new: bool = True, plots: bool = False, 
+    args: Optional[List[Any]] = None, a: float = 2, metric_interval: int = 25, 
+    gelman_rubins: Optional[Dict[str, Any]] = None) -> None:
         """
-        Run the MCMC simulation with optional MPI support.
+        Run the MCMC simulation with optional MPI support and Gelman-Rubin convergence criteria.
 
         Args:
             name (str): Name for the chain files.
             steps (int): Number of steps to run the MCMC.
-            pos (np.ndarray): Initial positions of the walkers.
+            pos (Union[np.ndarray, List[np.ndarray]]): Initial positions of the walkers. If 
+            Gelman-Rubin is used, it should be a list of initial positions for each chain.
             loglikelihood (Callable): Log-likelihood function.
             pool (Optional[Any], optional): Pool for parallel processing. Defaults to None.
             new (bool, optional): Whether to start a new run or continue from the last sample.
-            Defaults to True.
+             Defaults to True.
             plots (bool, optional): Whether to generate plots. Defaults to False.
-            args (List[Any], optional): Additional arguments for the log-likelihood function. 
-            Defaults to None.
+            args (List[Any], optional): Additional arguments for the log-likelihood function.
+             Defaults to None.
             a (float, optional): Stretch move parameter. Defaults to 2.
-            metric_interval (int, optional): Interval at which to calculate and save metrics. 
+            metric_interval (int, optional): Interval at which to calculate and save metrics.
             Defaults to 25.
+            gelman_rubins (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
+            criteria. Defaults to None.
         """
         try_mkdir('chains')
         chain_dir = os.path.join(os.getcwd(), 'chains')
-        filename = os.path.join(chain_dir, f'{name}.h5')
-        backend = emcee.backends.HDFBackend(filename)
 
         autocorr = []
         acceptance = []
 
-        # Load previous autocorr and acceptance data if available
-        try:
-            autocorr = np.loadtxt(os.path.join(chain_dir, f'{name}_tau.txt')).tolist()
-            acceptance = np.loadtxt(os.path.join(chain_dir, f'{name}_acceptance.txt')).tolist()
-        except OSError:
-            pass
+        if gelman_rubins:
+            # Read the Convergence Parameters from the dictionary
+            try:
+                N = gelman_rubins['N']
+                if N <= 1:
+                    self.logger.warning('The gelman rubin requires 2 or more chains!')
+                epsilon = gelman_rubins['epsilon']
+                minlength = gelman_rubins['min_length']
+                convergence_steps = gelman_rubins['convergence_steps']
+            except KeyError as e:
+                self.logger.error(f'Problem reading the Gelman-Rubin convergence parameters! Missing key: {e}')
+                sys.exit(-1)
 
-        sampler = emcee.EnsembleSampler(
-            self.nwalkers, self.ndim, loglikelihood, args=args, backend=backend,
-            moves=[emcee.moves.StretchMove(a=a)], pool=pool
-        )
+            # Ensure pos is a list of initial positions for each chain
+            if not isinstance(pos, list) or len(pos) != N:
+                self.logger.error(f'For Gelman-Rubin, pos must be a list of {N} initial positions.')
+                sys.exit(-1)
 
-        if new:
-            initial_sample = pos
-        else:
-            initial_sample = sampler.get_last_sample()
+            # List containing all the samplers
+            list_samplers = []
 
-        for sample in sampler.sample(initial_sample, iterations=steps, progress=True):
-            if sampler.iteration % metric_interval == 0:
-                try:
-                    tau = sampler.get_autocorr_time(tol=0)
-                    autocorr.append(np.mean(tau))
-                    acceptance.append(np.mean(sampler.acceptance_fraction))
-                    np.savetxt(os.path.join(chain_dir, f'{name}_tau.txt'), autocorr)
-                    np.savetxt(os.path.join(chain_dir, f'{name}_acceptance.txt'), acceptance)
-                    self.logger.info(f'Mean acceptance fraction: {np.mean(sampler.acceptance_fraction)}')
-                    self.logger.info(f'Mean autocorrelation time: {np.mean(tau)}')
-                except emcee.autocorr.AutocorrError:
-                    self.logger.warning('Autocorrelation time could not be estimated.')
+            # Storage values used to estimate convergence
+            within_chain_var = np.zeros((N, self.ndim))
+            mean_chain = np.zeros((N, self.ndim))
+            chain_length = 0
+            scalereduction = np.full(self.ndim, 2.0)
 
-        if plots:
-            self.plot_walkers([sampler], name)
-            self.plot_1d([sampler], name)
+            # Counting the number of iterations
+            counter = 0
 
-    def run_gelman(self,gelman_rubins,handle,loglikelihood,x0=None,sigmas=None,new_run = True,
-    args=None,ranges=None, a=2, save_epsilon = False):
-        '''
-        This function start the chains and only stop when convergence criteria is achieved
-        '''
+            self.logger.info(f'You are considering {minlength} as the minimum length for the chain')
+            self.logger.info(f'Convergence test happens every {convergence_steps} steps')
+            self.logger.info(f'Number of walkers: {self.nwalkers}')
+            self.logger.info(f'Number of Parameters: {self.ndim}')
+            self.logger.info(f'Number of parallel chains: {N}')
 
-        #Directory where the chains will be storaged
-        try_mkdir('chains')
-        directory_to_chain = os.getcwd()+"/chains/"
+            # Create all the samplers and their walkers
+            for i in range(N):
+                filename = os.path.join(chain_dir, f'{name}Run_{i}.h5')
+                backend = emcee.backends.HDFBackend(filename)
+                sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, loglikelihood,
+                 args=args, backend=backend, moves=[emcee.moves.StretchMove(a=a)], pool=pool)
+                list_samplers.append(sampler)
 
-        #Read the Convergence Parameters from a dictionary
-        try:
-            N = gelman_rubins['N']
-            epsilon = gelman_rubins['epsilon']
-            minlength = gelman_rubins['min_length']
-            convergence_steps = gelman_rubins['convergence_steps']
-            initial_option = gelman_rubins['initial']
-        except:
-            print('Problem reading the Gelman-Rubin convergence parameters!')
-            print('keys: N, epsilon, min_length, convergence_steps, initial')
-            sys.exit(-1)
-
-        #List containing all the samplers
-        list_samplers = []
-
-        #storate values used to estimate convergence
-        within_chain_var = np.zeros((N, self.ndim))
-        mean_chain = np.zeros((N, self.ndim))
-        chain_length = 0
-        scalereduction = np.arange(self.ndim, dtype=np.float)
-        scalereduction.fill(2.)
-
-        #Counting the number of iterations:
-        counter = 0
-
-        print('You are considering', minlength, 'as the minimum lenght for the chain')
-        print('Convergence test happens every', convergence_steps, 'steps')
-        print('Number of walkers:', self.nwalkers)
-        print('Number of Parameters:', self.ndim)
-        print('Number of parallel chains:', N)
-
-        #ask_to_continue()
-
-        #Create all the samplers and their walkers
-        for i in range(0,N):
-            #create the backend
-            filename = directory_to_chain+handle+'Run_'+str(i)+'.h5'
-            backend   = emcee.backends.HDFBackend(filename)
-            if args is not None:
-                list_samplers.append(emcee.EnsembleSampler(self.nwalkers,self.ndim,loglikelihood,
-                args=args,backend=backend,moves=[emcee.moves.StretchMove(a=a)]))
+            # Kicking off all chains to have the minimum length
+            if new:
+                for i in range(N):
+                    self.logger.info(f'Preparing chain {i}')
+                    self.logger.info('Go!')
+                    list_samplers[i].run_mcmc(pos[i], minlength, progress=True)
+                    within_chain_var[i], mean_chain[i], chain_length = self.prep_gelman_rubin(list_samplers[i])
             else:
-                list_samplers.append(emcee.EnsembleSampler(self.nwalkers,self.ndim,loglikelihood,
-                backend=backend,moves=[emcee.moves.StretchMove(a=a)]))
+                for i in range(N):
+                    self.logger.info(f'Preparing chain {i}')
+                    self.logger.info('Go!')
+                    list_samplers[i].run_mcmc(None, minlength, progress=True)
+                    within_chain_var[i], mean_chain[i], chain_length = self.prep_gelman_rubin(list_samplers[i])
 
-        #Kicking off all chains to have the minimum length
-        if new_run:
-            for i in range(0,N):
-                to_print = 'Preparing chain '+str(i)
-                print(to_print.center(80, '*'))
-                name_initial_pos = handle+'_initial_pos_Run_'+str(i)
-                print('Positions for the chain', i)
-                pos = self.create_walkers(initial_option,file=name_initial_pos,x0=x0,sigmas=sigmas,
-                ranges=ranges)
-                print('Go!')
-                list_samplers[i].run_mcmc(pos,minlength,progress=True)
-                within_chain_var[i],mean_chain[i],chain_length = self.prep_gelman_rubin(list_samplers[i])
+            self.logger.info('All chains with the minimum length!')
+            self.logger.info('Checking convergence...')
+            plotname = f'{name}_{counter}'
+            self.plot_1d(name, gelman_rubins=gelman_rubins)
+            scalereduction = self.gelman_rubin_convergence(within_chain_var, mean_chain, 
+            chain_length / 2)
+            eps = abs(1 - scalereduction)
 
+            self.logger.info(f'epsilon = {eps}')
+
+            if any(eps > epsilon):
+                self.logger.info('Did not converge! Running more steps...')
+
+            while any(eps > epsilon):
+                counter += 1
+                self.logger.info(f'Running iteration {counter}')
+                for i in range(N):
+                    list_samplers[i].run_mcmc(None, convergence_steps, progress=True)
+                    within_chain_var[i], mean_chain[i], chain_length = \
+                        self.prep_gelman_rubin(list_samplers[i])
+                scalereduction = \
+                    self.gelman_rubin_convergence(within_chain_var, mean_chain, chain_length / 2)
+                eps = abs(1 - scalereduction)
+
+                self.logger.info(f'epsilon = {eps}')
+                self.plot_1d(name, gelman_rubins=gelman_rubins)
+
+            self.logger.info('Convergence Achieved!')
+            self.logger.info('Plotting walkers position over steps...')
+            self.plot_walkers(name, gelman_rubins=gelman_rubins)
+            self.logger.info('Plotting the correlation matrix...')
+            self.plot_CorrMatrix(name, gelman_rubins=gelman_rubins)
+            self.logger.info('Making a corner plot...')
+            self.plot_corner(handle=name, gelman_rubins=gelman_rubins, save=f'{name}_Corner')
+            self.logger.info('Done!')
         else:
-            for i in range(0,N):
-                to_print = 'Preparing chain '+str(i)
-                print(to_print.center(80, '*'))
-                print('Go!')
-                list_samplers[i].run_mcmc(None,minlength,progress=True)
-                within_chain_var[i],mean_chain[i],chain_length = \
-                    self.prep_gelman_rubin(list_samplers[i])
-        '''
-        At this points all chains have the same length. It is checked if they already converged. 
-        If that is not the case they continue to run
-        '''
-        print('All chains with the minimum length!')
-        print('Checking convergence...')
-        plotname = handle+'_'+str(counter)
-        self.plot_1d(list_samplers,plotname)
-        scalereduction = self.gelman_rubin_convergence(within_chain_var,mean_chain,chain_length/2)
-        eps = abs(1-scalereduction)
+            # Run the sampler for a fixed number of steps
+            filename = os.path.join(chain_dir, f'{name}.h5')
+            backend = emcee.backends.HDFBackend(filename)
+            sampler = emcee.EnsembleSampler(
+                self.nwalkers, self.ndim, loglikelihood, args=args, backend=backend,
+                moves=[emcee.moves.StretchMove(a=a)], pool=pool
+            )
 
-        print('epsilon = ', eps)
+            sampler.run_mcmc(pos, steps, progress=True)
 
-        if any(eps > epsilon):
-            print('Did not converge! Running more steps...')
+            for sample in sampler.sample(pos, iterations=steps, progress=True):
+                if sampler.iteration % metric_interval == 0:
+                    try:
+                        tau = sampler.get_autocorr_time(tol=0)
+                        autocorr.append(np.mean(tau))
+                        acceptance.append(np.mean(sampler.acceptance_fraction))
+                        np.savetxt(os.path.join(chain_dir, f'{name}_tau.txt'), autocorr)
+                        np.savetxt(os.path.join(chain_dir, f'{name}_acceptance.txt'), acceptance)
+                        self.logger.info(f'Mean acceptance fraction: {np.mean(sampler.acceptance_fraction)}')
+                        self.logger.info(f'Mean autocorrelation time: {np.mean(tau)}')
+                    except emcee.autocorr.AutocorrError:
+                        self.logger.warning('Autocorrelation time could not be estimated.')
 
-        '''
-        If the minimum length was not enough, more steps are done. As soon as the epsilon achieves 
-        crosses the threshold, the analysis is done.
-        '''
-        while any(eps > epsilon):
-            counter += 1
-            print('Running iteration', counter)
-            for i in range(0,N):
-                list_samplers[i].run_mcmc(None,convergence_steps,progress=True)
-                within_chain_var[i],mean_chain[i],chain_length = self.prep_gelman_rubin(list_samplers[i])
-            scalereduction = self.gelman_rubin_convergence(within_chain_var,mean_chain,chain_length/2)
-            eps = abs(1-scalereduction)
+            if plots:
+                self.logger.info('Convergence Achieved!')
+                self.logger.info('Plotting walkers position over steps...')
+                self.plot_walkers([sampler], plotname)
+                self.logger.info('Plotting the correlation matrix...')
+                self.plot_CorrMatrix(handle=name, gelman=gelman_rubins)
+                self.logger.info('Making a corner plot...')
+                self.plot_corner(handle=name, gelman=gelman_rubins, save=f'{name}_Corner')
+                self.logger.info('Done!')
 
-            print('epsilon = ',eps)
-
-            plotname = handle+'_'+str(counter)
-            self.plot_1d(list_samplers,plotname)
-
-        print('Convergence Achieved!')
-        print('Plotting walkers position over steps...')
-        self.plot_walkers(list_samplers,plotname)
-        print('Plotting the correlation matrix...')
-        self.plot_CorrMatrix(handle = handle, gelman=gelman_rubins)
-        print('Making a corner plot...')
-        self.plot_corner(handle = handle, gelman = gelman_rubins, save = handle+"_Corner")
-        print('Done!')
-        
     def get_chain(self, handle: str, gelman: Optional[Dict] = None) -> np.ndarray:
             """
             Retrieve the MCMC chain.
@@ -711,24 +717,6 @@ class MCMC:
 
         return final_logprob
 
-
-def main():
-    prior = 'PRIOR_A_1T_stoc_hd_coev'    
-    nwalkers = 30
-    MCMC_test = MCMC(nwalkers,prior)
-    MCMC_flat_prior = MCMC_test.in_prior
-    gaussian_prior = MCMC_test.log_gaussian_prior
-    x0 = [2.14]
-    sigma = [0.2]
-    print(gaussian_prior([2.14,2,2,2,2,2,2,2],x0=x0,sigma=sigma,params=['A']))
-
-
-
-if __name__ == '__main__':
-    main()
-
-
-
 def try_mkdir(name: str) -> None:
     """
     Tries to create a directory with the given name in the current working directory.
@@ -750,3 +738,9 @@ def try_mkdir(name: str) -> None:
     except OSError as e:
         # Handle other OS-related errors
         print(f"Error creating directory {this_dir_to_make}: {e}")
+
+def main():
+    pass
+
+if __name__ == '__main__':
+    main()
