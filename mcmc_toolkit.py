@@ -1,18 +1,18 @@
-import os, sys, json, emcee
-import numpy as np
-import logging
+import os, sys, json, logging
 from collections import OrderedDict
-from typing import List, Dict, Any, Optional, Callable, Union
 from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional, Union, Callable
+import numpy as np
+import emcee
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from getdist import plots, MCSamples
+from getdist import MCSamples, plots
+from matplotlib import cm
 
 @dataclass
 class MCMC:
     nwalkers: int
     prior_name: str
-    priors_dir: str = field(default_factory=lambda: os.path.join(os.getcwd(), 'priors'))
+    priors_dir: Optional[str] = None
     burnin_frac: float = 0.5
     log_file: Optional[str] = None
     prior_dictionary: Dict[str, Any] = field(init=False)
@@ -29,6 +29,10 @@ class MCMC:
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger(__name__)
+
+        # Set the default priors directory if not provided
+        if self.priors_dir is None:
+            self.priors_dir = os.path.join(os.getcwd(), 'priors')
 
         directory = self.priors_dir
         try:
@@ -524,6 +528,7 @@ class MCMC:
                     within_chain_var[i], mean_chain[i], chain_length = self.prep_gelman_rubin(list_samplers[i])
             else:
                 for i in range(N):
+                    last_sample = list_samplers[i].get_last_sample()
                     self.logger.info(f'Preparing chain {i}')
                     self.logger.info('Go!')
                     list_samplers[i].run_mcmc(None, minlength, progress=True)
@@ -572,30 +577,42 @@ class MCMC:
                 self.nwalkers, self.ndim, loglikelihood, args=args, backend=backend,
                 moves=[emcee.moves.StretchMove(a=a)], pool=pool
             )
+            if new:
+                for sample in sampler.sample(pos, iterations=steps, progress=True):
+                    if sampler.iteration % metric_interval == 0:
+                        try:
+                            tau = sampler.get_autocorr_time(tol=0)
+                            autocorr.append(np.mean(tau))
+                            acceptance.append(np.mean(sampler.acceptance_fraction))
+                            np.savetxt(os.path.join(chain_dir, f'{name}_tau.txt'), autocorr)
+                            np.savetxt(os.path.join(chain_dir, f'{name}_acceptance.txt'), acceptance)
+                            self.logger.info(f'Mean acceptance fraction: {np.mean(sampler.acceptance_fraction)}')
+                            self.logger.info(f'Mean autocorrelation time: {np.mean(tau)}')
+                        except emcee.autocorr.AutocorrError:
+                            self.logger.warning('Autocorrelation time could not be estimated.')
 
-            sampler.run_mcmc(pos, steps, progress=True)
-
-            for sample in sampler.sample(pos, iterations=steps, progress=True):
-                if sampler.iteration % metric_interval == 0:
-                    try:
-                        tau = sampler.get_autocorr_time(tol=0)
-                        autocorr.append(np.mean(tau))
-                        acceptance.append(np.mean(sampler.acceptance_fraction))
-                        np.savetxt(os.path.join(chain_dir, f'{name}_tau.txt'), autocorr)
-                        np.savetxt(os.path.join(chain_dir, f'{name}_acceptance.txt'), acceptance)
-                        self.logger.info(f'Mean acceptance fraction: {np.mean(sampler.acceptance_fraction)}')
-                        self.logger.info(f'Mean autocorrelation time: {np.mean(tau)}')
-                    except emcee.autocorr.AutocorrError:
-                        self.logger.warning('Autocorrelation time could not be estimated.')
-
+            else:
+                last_sample = sampler.get_last_sample()
+                for sample in sampler.sample(last_sample, iterations=steps, progress=True):
+                    if sampler.iteration % metric_interval == 0:
+                        try:
+                            tau = sampler.get_autocorr_time(tol=0)
+                            autocorr.append(np.mean(tau))
+                            acceptance.append(np.mean(sampler.acceptance_fraction))
+                            np.savetxt(os.path.join(chain_dir, f'{name}_tau.txt'), autocorr)
+                            np.savetxt(os.path.join(chain_dir, f'{name}_acceptance.txt'), acceptance)
+                            self.logger.info(f'Mean acceptance fraction: {np.mean(sampler.acceptance_fraction)}')
+                            self.logger.info(f'Mean autocorrelation time: {np.mean(tau)}')
+                        except emcee.autocorr.AutocorrError:
+                            self.logger.warning('Autocorrelation time could not be estimated.')  
             if plots:
                 self.logger.info('Convergence Achieved!')
                 self.logger.info('Plotting walkers position over steps...')
-                self.plot_walkers([sampler], plotname)
+                self.plot_walkers(handle=name, gelman_rubins=gelman_rubins)
                 self.logger.info('Plotting the correlation matrix...')
-                self.plot_CorrMatrix(handle=name, gelman=gelman_rubins)
+                self.plot_CorrMatrix(handle=name, gelman_rubins=gelman_rubins)
                 self.logger.info('Making a corner plot...')
-                self.plot_corner(handle=name, gelman=gelman_rubins, save=f'{name}_Corner')
+                self.plot_corner(handle=name, gelman_rubins=gelman_rubins, save=f'{name}_Corner')
                 self.logger.info('Done!')
 
     def get_chain(self, handle: str, gelman: Optional[Dict] = None) -> np.ndarray:

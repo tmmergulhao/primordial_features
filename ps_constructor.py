@@ -4,7 +4,7 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 import sys
 
 class PowerSpectrumConstructor:
-    def __init__(self, ps_filename, model):
+    def __init__(self, ps_filename, model, k_array):
         """
         Load the file with the products necessary to evaluate the theoretical power spectrum.
 
@@ -36,7 +36,7 @@ class PowerSpectrumConstructor:
             raise ValueError(f"Invalid model '{model}'. Please choose one of: {', '.join(valid_options)}")
 
         kh_long, ps_smooth_points, O_lin_points, ps_lin_points = power_spec.T
-
+        
         # Store the values in the object
         self.kh_long = kh_long        
         self.ps_smooth = InterpolatedUnivariateSpline(kh_long, ps_smooth_points, ext=3)
@@ -57,13 +57,16 @@ class PowerSpectrumConstructor:
         # Array for the Hankel transform
         self.kh_ext = np.logspace(-4, np.log10(10), 2**12)
 
+        # Array to evaluate the theory
+        self.k = k_array
+
         # Map for different models of primordial features
         self.PrimordialFeatureModels = {
             'lin': self.LinearFeatures_deltaP,
             'log': self.LogarithmicFeatures_deltaP,
             'sound': self.VaryingSpeedOfSound_deltaP,
             'step': self.StepInPotential_deltaP,
-            'None': lambda _: 0
+            'None': lambda _,__: 0
         }
     
     def DefineWindowFunction(self, winfunc_NGC, winfunc_SGC):
@@ -101,7 +104,7 @@ class PowerSpectrumConstructor:
 
         return InterpolatedUnivariateSpline(kh_output, P_window)
 
-    def SmoothAmplitude(self, sigma_s, B2, a0, a1, a2, a3, a4):
+    def SmoothAmplitude(self, _k, sigma_s, B2, a0, a1, a2, a3, a4):
         """
         Compute the smooth amplitude for the power spectrum.
 
@@ -114,21 +117,21 @@ class PowerSpectrumConstructor:
             array-like: The smooth power spectrum.
         """
         # Compute the velocity damping term
-        F_fog = 1.0 / (1.0 + 0.5 * self.kh_ext**2 * sigma_s**2)**2
+        F_fog = 1.0 / (1.0 + 0.5 * _k**2 * sigma_s**2)**2
 
         # Theory - Broadband
-        invk_norm = self.k_norm / self.kh_ext
+        invk_norm = self.k_norm / _k
         theory_broadband = (
             a0 * invk_norm**3 + a1 * invk_norm**2 + a2 * invk_norm + a3 +
-            a4 * (self.kh_ext)**2 * np.exp(-0.1 * self.kh_ext**2)
+            a4 * (_k)**2 * np.exp(-0.1 * _k**2)
         )
 
         # Compute the full non-wiggle part
-        P_nw = B2**2 * self.ps_smooth(self.kh_ext) * F_fog + theory_broadband * self.P_norm
+        P_nw = B2**2 * self.ps_smooth(_k) * F_fog + theory_broadband * self.P_norm
 
         return P_nw
 
-    def VaryingSpeedOfSound_deltaP(self, params):
+    def VaryingSpeedOfSound_deltaP(self, _k, params):
         """
         Compute the delta power spectrum for the 'sound' model.
 
@@ -143,14 +146,14 @@ class PowerSpectrumConstructor:
 
         tau_f = -tau_f * self.h
         kd = np.exp(log_beta)**0.5 / tau_f
-        osc1 = np.sin(2 * tau_f * self.kh_ext) + 1 / (tau_f * self.kh_ext) * np.cos(2 * tau_f * self.kh_ext)
+        osc1 = np.sin(2 * tau_f * _k) + 1 / (tau_f * self.kh_ext) * np.cos(2 * tau_f * self.kh_ext)
         osc2 = -0.5 / (tau_f**2 * self.kh_ext) * np.sin(2 * tau_f * self.kh_ext)
         Dk = As * np.exp(-self.kh_ext**2 / kd**2) * self.kh_ext * np.sqrt(np.pi) / (9 * kd)
         d_Dk = (As / (9 * kd**3)) * np.exp(-self.kh_ext**2 / kd**2) * (kd**2 - 2 * self.kh_ext**2) * np.sqrt(np.pi)
         delta_P = osc1 * Dk + osc2 * d_Dk
         return delta_P
 
-    def LinearFeatures_deltaP(self, params):
+    def LinearFeatures_deltaP(self, _k, params):
         """
         Compute the delta power spectrum for the 'lin' model.
 
@@ -164,10 +167,10 @@ class PowerSpectrumConstructor:
         A, omega_lin, phi = params
 
         # Linear Primordial Oscillations
-        delta_P = A * np.sin(omega_lin * self.kh_ext * self.h + np.pi * phi)
+        delta_P = A * np.sin(omega_lin * _k * self.h + np.pi * phi)
         return delta_P
 
-    def LogarithmicFeatures_deltaP(self, params):
+    def LogarithmicFeatures_deltaP(self, _k, params):
         """
         Compute the delta power spectrum for the 'log' model.
 
@@ -181,10 +184,10 @@ class PowerSpectrumConstructor:
         A, omega_log, phi = params
 
         # Logarithmic Primordial Oscillations
-        delta_P = A * np.sin(omega_log * np.log(self.kh_ext / self.k_norm) + np.pi * phi)
+        delta_P = A * np.sin(omega_log * np.log(_k / self.k_norm) + np.pi * phi)
         return delta_P
 
-    def StepInPotential_deltaP(self, params):
+    def StepInPotential_deltaP(self, _k, params):
         """
         Compute the delta power spectrum for the 'step' model.
 
@@ -197,7 +200,7 @@ class PowerSpectrumConstructor:
         # Unpack the primordial features parameters
         omegas, xs, As = params
 
-        x = self.kh_ext * omegas
+        x = _k * omegas
         D_arg = x / xs
         W0 = 1 / (2 * x**4) * ((18 * x - 6 * x**3) * np.cos(2 * x) + (15 * x**2 - 9) * np.sin(2 * x))
         W1 = -3 / (x**4) * (x * np.cos(x) - np.sin(x)) * (3 * x * np.cos(x) + (2 * x**2 - 3) * np.sin(x))
@@ -210,7 +213,7 @@ class PowerSpectrumConstructor:
         delta_P = deltaI0 + I1**2 + I1**2 * deltaI0
         return delta_P
 
-    def BAO(self, alpha):
+    def BAO(self, _k, alpha):
         """
         Compute the BAO oscillations.
 
@@ -221,10 +224,10 @@ class PowerSpectrumConstructor:
             array-like: The BAO oscillations.
         """
         # BAO oscillations
-        O_lin_points = self.O_lin(self.kh_ext / alpha) - 1
+        O_lin_points = self.O_lin(_k / alpha) - 1
         return O_lin_points
 
-    def NonlinearDamping(self, sigma_nl):
+    def NonlinearDamping(self, _k, sigma_nl):
         """
         Compute the nonlinear damping factor.
 
@@ -234,9 +237,9 @@ class PowerSpectrumConstructor:
         Returns:
             array-like: The nonlinear damping factor.
         """
-        return np.exp(-0.5 * self.kh_ext**2 * sigma_nl**2)
+        return np.exp(-0.5 * _k**2 * sigma_nl**2)
 
-    def Evaluate_bare(self, kh_data, params):
+    def Evaluate_bare(self, params):
         """
         Evaluate the bare power spectrum without applying the window function.
 
@@ -252,26 +255,23 @@ class PowerSpectrumConstructor:
         BNGC, BSGC, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
         
         # Compute delta_P (primordial feature)
-        deltaP = self.PrimordialFeatureModels[self.model](deltaP_params)
+        deltaP = self.PrimordialFeatureModels[self.model](self.k, deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
-        P_nw_NGC = self.SmoothAmplitude(sigma_s, BNGC, a0, a1, a2, a3, a4)
-        P_nw_SGC = self.SmoothAmplitude(sigma_s, BSGC, a0, a1, a2, a3, a4)
+        P_nw_NGC = self.SmoothAmplitude(self.k, sigma_s, BNGC, a0, a1, a2, a3, a4)
+        P_nw_SGC = self.SmoothAmplitude(self.k, sigma_s, BSGC, a0, a1, a2, a3, a4)
 
         # BAO oscillations
-        BAO_wiggles = self.BAO(alpha)
+        BAO_wiggles = self.BAO(self.k, alpha)
 
         # Nonlinear Damping
-        nonlinear_damping = self.NonlinearDamping(sigma_nl)
+        nonlinear_damping = self.NonlinearDamping(self.k, sigma_nl)
 
         # Final Result
         P0_bare_NGC = P_nw_NGC * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
         P0_bare_SGC = P_nw_SGC * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
 
-        P0_NGC = InterpolatedUnivariateSpline(self.kh_ext, P0_bare_NGC)
-        P0_SGC = InterpolatedUnivariateSpline(self.kh_ext, P0_bare_SGC)
-
-        return np.hstack((P0_NGC(kh_data), P0_SGC(kh_data)))
+        return np.hstack((P0_bare_NGC, P0_bare_SGC))
         
     def Evaluate_wincov(self, kh_data, params):
         """
@@ -289,17 +289,17 @@ class PowerSpectrumConstructor:
         BNGC, BSGC, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
         
         # Compute delta_P (primordial feature)
-        deltaP = self.PrimordialFeatureModels[self.model](deltaP_params)
+        deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext,deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
-        P_nw_NGC = self.SmoothAmplitude(sigma_s, BNGC, a0, a1, a2, a3, a4)
-        P_nw_SGC = self.SmoothAmplitude(sigma_s, BSGC, a0, a1, a2, a3, a4)
+        P_nw_NGC = self.SmoothAmplitude(self.kh_ext, sigma_s, BNGC, a0, a1, a2, a3, a4)
+        P_nw_SGC = self.SmoothAmplitude(self.kh_ext, sigma_s, BSGC, a0, a1, a2, a3, a4)
 
         # BAO oscillations
-        BAO_wiggles = self.BAO(alpha)
+        BAO_wiggles = self.BAO(self.kh_ext, alpha)
 
         # Nonlinear Damping
-        nonlinear_damping = self.NonlinearDamping(sigma_nl)
+        nonlinear_damping = self.NonlinearDamping(self.kh_ext, sigma_nl)
 
         # Final Result
         P0_bare_NGC = P_nw_NGC * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
@@ -309,4 +309,4 @@ class PowerSpectrumConstructor:
         P0_NGC = self.ApplyWindowFunction(P0_bare_NGC, self.winfunc_NGC)
         P0_SGC = self.ApplyWindowFunction(P0_bare_SGC, self.winfunc_SGC)
 
-        return np.hstack((P0_NGC(kh_data), P0_SGC(kh_data)))
+        return np.hstack((P0_NGC(self.k), P0_SGC(self.k)))

@@ -1,0 +1,14 @@
+2024-09-19 15:14:09,946 - mcmc_toolkit - ERROR - File lin_simple.json not found in /Users/s2223060/Desktop/primordial_features/nb/priors.
+2024-09-19 15:14:09,948 - root - ERROR - Internal Python error in the inspect module.
+Below is the traceback from this internal error.
+
+2024-09-19 15:14:10,000 - root - INFO - 
+Unfortunately, your original traceback can not be constructed.
+
+2024-09-19 15:14:24,291 - mcmc_toolkit - ERROR - File lin_simple.json not found in /Users/s2223060/Desktop/primordial_features/nb/priors.
+2024-09-19 15:14:24,291 - root - ERROR - Internal Python error in the inspect module.
+Below is the traceback from this internal error.
+
+2024-09-19 15:14:24,408 - root - INFO - 
+Unfortunately, your original traceback can not be constructed.
+
