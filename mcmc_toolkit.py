@@ -122,14 +122,11 @@ class MCMC:
                 pos[:, i] = np.random.uniform(self.prior_bounds[0, i], self.prior_bounds[1, i], 
                 self.nwalkers)
 
-                self.logger.info(f'For param {self.labels[i]}: Minimum: {round(np.min(pos[:, i]),2)} | Maximum: {round(np.max(pos[:, i]), 2)}')
-
         elif mode == 'gaussian':
             if x0 is None or sigmas is None:
                 raise ValueError("x0 and sigmas must be provided for 'gaussian' mode.")
             for i in range(self.ndim):
                 pos[:, i] = sigmas[i] * np.random.randn(self.nwalkers) + x0[i]
-                self.logger.info(f'For param {self.labels[i]}: Minimum: {round(np.min(pos[:, i]), 2)} | Maximum: {round(np.max(pos[:, i]), 2)}')
 
         elif mode == 'uniform_thin':
             if x0 is None or ranges is None:
@@ -139,7 +136,6 @@ class MCMC:
             upper = x0 + ranges
             for i in range(self.ndim):
                 pos[:, i] = np.random.uniform(lower[i], upper[i], self.nwalkers)
-                self.logger.info(f'For param {self.labels[i]}: Minimum: {round(np.min(pos[:, i]), 2)} | Maximum: {round(np.max(pos[:, i]), 2)}')
 
         else:
             raise ValueError(f"Unknown mode '{mode}'. Valid options are 'gaussian', 'uniform_prior', and 'uniform_thin'.")
@@ -651,8 +647,6 @@ class MCMC:
                 final_chain = backend.get_chain(flat=True, discard=burnin)
 
             return final_chain
-
-
     def get_ML(self, handle: str, gelman: Optional[Dict] = None) -> np.ndarray:
         """
         Search in the total sample of walker positions for the set of parameters that gives the 

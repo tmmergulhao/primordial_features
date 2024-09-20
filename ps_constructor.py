@@ -69,18 +69,15 @@ class PowerSpectrumConstructor:
             'None': lambda _,__: 0
         }
     
-    def DefineWindowFunction(self, winfunc_NGC, winfunc_SGC):
+    def DefineWindowFunction(self, winfunc):
         """
         Initialise the survey window function for both NGC and SGC.
 
         Args:
             winfunc_NGC (Callable[[float], float]): The interpolated function representing the 
                                                     window function for the NGC in configuration space.
-            winfunc_SGC (Callable[[float], float]): The interpolated function representing the 
-                                                    window function for the SGC in configuration space.
         """
-        self.winfunc_NGC = winfunc_NGC
-        self.winfunc_SGC = winfunc_SGC
+        self.winfunc = winfunc
 
     def ApplyWindowFunction(self, P_bare, window_func):
         """
@@ -245,21 +242,20 @@ class PowerSpectrumConstructor:
 
         Args:
             kh_data (array-like): Array of k-values at which to evaluate the power spectrum.
-            params (list): List of parameters [BNGC, BSGC, sigma_nl, sigma_s, a0, a1, a2, a3, a4, 
+            params (list): List of parameters [BNGC, sigma_nl, sigma_s, a0, a1, a2, a3, a4, 
             alpha, *deltaP_params].
 
         Returns:
             array-like: The evaluated power spectrum.
         """
         # Get the broadband + feature parameters
-        BNGC, BSGC, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
+        B, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
         
         # Compute delta_P (primordial feature)
         deltaP = self.PrimordialFeatureModels[self.model](self.k, deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
-        P_nw_NGC = self.SmoothAmplitude(self.k, sigma_s, BNGC, a0, a1, a2, a3, a4)
-        P_nw_SGC = self.SmoothAmplitude(self.k, sigma_s, BSGC, a0, a1, a2, a3, a4)
+        P_nw = self.SmoothAmplitude(self.k, sigma_s, B, a0, a1, a2, a3, a4)
 
         # BAO oscillations
         BAO_wiggles = self.BAO(self.k, alpha)
@@ -268,32 +264,30 @@ class PowerSpectrumConstructor:
         nonlinear_damping = self.NonlinearDamping(self.k, sigma_nl)
 
         # Final Result
-        P0_bare_NGC = P_nw_NGC * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
-        P0_bare_SGC = P_nw_SGC * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
+        P0_bare = P_nw * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
 
-        return np.hstack((P0_bare_NGC, P0_bare_SGC))
+        return P0_bare
         
-    def Evaluate_wincov(self, kh_data, params):
+    def Evaluate_wincov(self, params):
         """
         Evaluate the power spectrum with window function convolution.
 
         Args:
             kh_data (array-like): Array of k-values at which to evaluate the power spectrum.
-            params (list): List of parameters [BNGC, BSGC, sigma_nl, sigma_s, a0, a1, a2, a3, a4, 
+            params (list): List of parameters [B, sigma_nl, sigma_s, a0, a1, a2, a3, a4, 
             alpha, *deltaP_params].
 
         Returns:
             array-like: The evaluated power spectrum with window function convolution.
         """
         # Get the broadband + feature parameters
-        BNGC, BSGC, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
+        BNGC, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
         
         # Compute delta_P (primordial feature)
         deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext,deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
-        P_nw_NGC = self.SmoothAmplitude(self.kh_ext, sigma_s, BNGC, a0, a1, a2, a3, a4)
-        P_nw_SGC = self.SmoothAmplitude(self.kh_ext, sigma_s, BSGC, a0, a1, a2, a3, a4)
+        P_nw = self.SmoothAmplitude(self.kh_ext, sigma_s, BNGC, a0, a1, a2, a3, a4)
 
         # BAO oscillations
         BAO_wiggles = self.BAO(self.kh_ext, alpha)
@@ -302,11 +296,9 @@ class PowerSpectrumConstructor:
         nonlinear_damping = self.NonlinearDamping(self.kh_ext, sigma_nl)
 
         # Final Result
-        P0_bare_NGC = P_nw_NGC * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
-        P0_bare_SGC = P_nw_SGC * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
+        P0_bare = P_nw * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
 
         # Apply window function
-        P0_NGC = self.ApplyWindowFunction(P0_bare_NGC, self.winfunc_NGC)
-        P0_SGC = self.ApplyWindowFunction(P0_bare_SGC, self.winfunc_SGC)
+        P0 = self.ApplyWindowFunction(P0_bare, self.winfunc)
 
-        return np.hstack((P0_NGC(self.k), P0_SGC(self.k)))
+        return P0
