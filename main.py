@@ -89,13 +89,13 @@ k, DATA = poles.k, poles(ell=0).real
 # Initialize the model
 ps_model = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
 
-if (fn_wf_ngc is  None) or (fn_wf_sgc is  None):
+if (fn_wf_ngc is None) or (fn_wf_sgc is None):
     PrimordialFeature_theory = lambda x: ps_model.Evaluate_bare(x)# NGC and SGC are concatenated
 
 else:
 
-    ps_model.DefineWindowFunction(interp1d(wfunc_NGC[0],wfunc_NGC[1]),
-                                    interp1d(wfunc_SGC[0],wfunc_SGC[1]))
+    ps_model.DefineWindowFunction(interp1d(wfunc_NGC.T[0],wfunc_NGC.T[1]),
+                                    interp1d(wfunc_SGC.T[0],wfunc_SGC.T[1]))
     PrimordialFeature_theory = lambda x: ps_model.Evaluate_wincov(x)# NGC and SGC are concatenated
 
 #Create the likelihood

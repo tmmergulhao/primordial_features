@@ -71,7 +71,7 @@ class PowerSpectrumConstructor:
     
     def DefineWindowFunction(self, winfunc):
         """
-        Initialise the survey window function for both NGC and SGC.
+        Initialise the survey window function.
 
         Args:
             winfunc_NGC (Callable[[float], float]): The interpolated function representing the 

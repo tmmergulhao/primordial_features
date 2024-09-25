@@ -5,3 +5,5 @@ figures/
 .ipynb_checkpoints/
 .DS_Store/
 figures/
+log/
+aux/
