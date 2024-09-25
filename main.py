@@ -78,7 +78,6 @@ if fn_wf_ngc is not None:
 if fn_wf_sgc is not None:
     wfunc_SGC = np.loadtxt(fn_wf_sgc)
 
-
 #Load the data
 poles = pypower.PowerSpectrumStatistics.load(DATA_file)
 covariance = np.loadtxt(COV_file)
