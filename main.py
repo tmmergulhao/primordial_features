@@ -18,11 +18,10 @@ import data_handling
 import matplotlib.pyplot as plt
 import os
 
-
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
 parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
-parser.add_argument('--mock', type=int, required=True, help='What mock to use')
+parser.add_argument('--mock', type=int, required=False, help='What mock to use')
 args = parser.parse_args()
 
 # Load environment variables from the specified .env file
@@ -114,8 +113,8 @@ ps_model_NGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_m
 ps_model_SGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
 
 if (fn_wf_ngc is None) or (fn_wf_sgc is None): #No window function convolution
-    PrimordialFeature_theory_NGC = lambda x: ps_model_NGC.Evaluate_bare(x)
-    PrimordialFeature_theory_SGC = lambda x: ps_model_SGC.Evaluate_bare(x)
+    theory_NGC = lambda x: ps_model_NGC.Evaluate_bare(x)
+    theory_SGC = lambda x: ps_model_SGC.Evaluate_bare(x)
 
 else: #Convolve the theory with the window function
     ps_model_NGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_NGC[0],wfunc_NGC[1],ext=3))
