@@ -41,5 +41,4 @@ def load_winfunc(filename):
     Returns (np.array): A np.array with two columns containing the separation the windowfunction
     in configuration space.
     """
-
     return np.loadtxt(filename).T[0:2]
