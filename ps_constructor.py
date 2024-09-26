@@ -280,13 +280,13 @@ class PowerSpectrumConstructor:
             array-like: The evaluated power spectrum with window function convolution.
         """
         # Get the broadband + feature parameters
-        BNGC, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
+        B, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
         
         # Compute delta_P (primordial feature)
         deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext,deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
-        P_nw = self.SmoothAmplitude(self.kh_ext, sigma_s, BNGC, a0, a1, a2, a3, a4)
+        P_nw = self.SmoothAmplitude(self.kh_ext, sigma_s, B, a0, a1, a2, a3, a4)
 
         # BAO oscillations
         BAO_wiggles = self.BAO(self.kh_ext, alpha)
@@ -298,6 +298,6 @@ class PowerSpectrumConstructor:
         P0_bare = P_nw * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
 
         # Apply window function
-        P0 = self.ApplyWindowFunction(P0_bare, self.winfunc)
+        P0 = self.ApplyWindowFunction(P0_bare, self.winfunc)(self.k)
 
         return P0

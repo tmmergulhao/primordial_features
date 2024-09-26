@@ -11,14 +11,18 @@ import logging
 import json
 import sys
 from scipy.interpolate import interp1d
+from scipy.interpolate import InterpolatedUnivariateSpline
 from multiprocessing import Pool
 from dotenv import load_dotenv
 import data_handling
 import matplotlib.pyplot as plt
+import os
+
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
 parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
+parser.add_argument('--mock', type=int, required=True, help='What mock to use')
 args = parser.parse_args()
 
 # Load environment variables from the specified .env file
@@ -26,11 +30,11 @@ load_dotenv(args.env)
 
 #Wheter or not to use multiprocessing
 MULTIPROCESSING = os.getenv('MULTIPROCESSING')
-PROCESSES = os.getenv('PROCESSES')
+PROCESSES = int(os.getenv('PROCESSES'))
 
 # Load the data products
 k_file = os.getenv('DATA_k')
-DATA_file = os.getenv('DATA')
+DATA_file = os.getenv('DATA').format(args.mock)
 COV_file = os.getenv('COV')
 fn_wf_ngc = os.getenv('FN_WF_NGC')
 fn_wf_sgc = os.getenv('FN_WF_SGC')
@@ -76,10 +80,14 @@ if MULTIPROCESSING:
 
 if fn_wf_ngc is not None:
     wfunc_NGC = data_handling.load_winfunc(fn_wf_ngc)
+    #Make sure the window function is normalised
+    wfunc_NGC[1] = wfunc_NGC[1]/wfunc_NGC[1][0]
 
 if fn_wf_sgc is not None:
     wfunc_SGC = data_handling.load_winfunc(fn_wf_sgc)
-
+    #Make sure the window function is normalised
+    wfunc_SGC[1] = wfunc_SGC[1]/wfunc_SGC[1][0]
+    
 #Load the data
 DATA = data_handling.load_data(DATA_file)
 covariance = data_handling.load_cov(COV_file)
@@ -110,10 +118,10 @@ if (fn_wf_ngc is None) or (fn_wf_sgc is None): #No window function convolution
     PrimordialFeature_theory_SGC = lambda x: ps_model_SGC.Evaluate_bare(x)
 
 else: #Convolve the theory with the window function
-    ps_model_NGC.DefineWindowFunction(interp1d(wfunc_NGC[0],wfunc_NGC[1]))
+    ps_model_NGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_NGC[0],wfunc_NGC[1],ext=3))
     theory_NGC = lambda x: ps_model_NGC.Evaluate_wincov(x)
 
-    ps_model_SGC.DefineWindowFunction(interp1d(wfunc_SGC[0],wfunc_SGC[1]))
+    ps_model_SGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_SGC[0],wfunc_SGC[1],ext=3))
     theory_SGC = lambda x: ps_model_SGC.Evaluate_wincov(x)
 
 #theta = ["BNGC", "BSGC", "sigma_nl", "sigma_s", "a0", "a1", "a2", "a3", "a4", "alpha", "A_lin", "omega_lin", "phi"]
@@ -146,12 +154,10 @@ def logposterior(theta):
 
 initial_positions = [mcmc.create_walkers('uniform_prior') for _ in range(gelman_rubin['N'])]
 
-print(logposterior(initial_positions[0][0]))
-sys.exit(-1)
 if __name__ == '__main__':
     if MULTIPROCESSING:
         # Create a multiprocessing pool
-        with Pool(processes = int(PROCESSES)) as pool:
+        with Pool(processes = PROCESSES) as pool:
             #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
             mcmc.run(handle, 0, initial_positions, logposterior, pool=pool, 
             gelman_rubins=gelman_rubin)

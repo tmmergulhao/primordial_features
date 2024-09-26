@@ -32,5 +32,7 @@ class likelihoods:
         Returns:
         float: The log-likelihood value.
         """
-        diff = self.theory(theta) - self.data
+        theory_result = self.theory(theta)
+        assert len(theory_result) == len(self.data), f"Data and theory with different shape: data: {len(self.data)}, theory: {len(theory_result)}"
+        diff = theory_result - self.data
         return -0.5 * QuadraticForm(diff, diff, self.invcov)
