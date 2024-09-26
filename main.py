@@ -1,19 +1,20 @@
 # main.py
-
 import numpy as np
 import ps_constructor
 import likelihood
 import mcmc_toolkit
 import pypower
-from multiprocessing import Pool
 import time
-from dotenv import load_dotenv
 import os
 import argparse
 import logging
 import json
 import sys
 from scipy.interpolate import interp1d
+from multiprocessing import Pool
+from dotenv import load_dotenv
+import data_handling
+import matplotlib.pyplot as plt
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
@@ -28,6 +29,7 @@ MULTIPROCESSING = os.getenv('MULTIPROCESSING')
 PROCESSES = os.getenv('PROCESSES')
 
 # Load the data products
+k_file = os.getenv('DATA_k')
 DATA_file = os.getenv('DATA')
 COV_file = os.getenv('COV')
 fn_wf_ngc = os.getenv('FN_WF_NGC')
@@ -73,33 +75,59 @@ if MULTIPROCESSING:
     logger.info(f'Processes: {PROCESSES}')
 
 if fn_wf_ngc is not None:
-    wfunc_NGC = np.loadtxt(fn_wf_ngc)
+    wfunc_NGC = data_handling.load_winfunc(fn_wf_ngc)
 
 if fn_wf_sgc is not None:
-    wfunc_SGC = np.loadtxt(fn_wf_sgc)
+    wfunc_SGC = data_handling.load_winfunc(fn_wf_sgc)
 
 #Load the data
-poles = pypower.PowerSpectrumStatistics.load(DATA_file)
-covariance = np.loadtxt(COV_file)
+DATA = data_handling.load_data(DATA_file)
+covariance = data_handling.load_cov(COV_file)
+k = data_handling.load_data_k(k_file)
+
+#********************** Defining the theory ********************************************************
+# The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
+# of NGC and SGC are different, they will have different window functions. It means that we will
+# need to convolve the NGC and SGC separately. It can be done in the following way:
+#       i)The total parameter space will have dimensions that are exclusive to a galaxy cap and
+#        shared ones.
+#        
+#       ii)For a given input theta, we will split it into theta_NGC and theta SGC.
+#
+#       iii) Compute the theory for NGC and SGC
+#
+#       iv) Concatenate the result from the step above and compare with data.
+
+
+# Initialize the model for NGC
+ps_model_NGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
+
+# Initialize the model for SGC
+ps_model_SGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
+
+if (fn_wf_ngc is None) or (fn_wf_sgc is None): #No window function convolution
+    PrimordialFeature_theory_NGC = lambda x: ps_model_NGC.Evaluate_bare(x)
+    PrimordialFeature_theory_SGC = lambda x: ps_model_SGC.Evaluate_bare(x)
+
+else: #Convolve the theory with the window function
+    ps_model_NGC.DefineWindowFunction(interp1d(wfunc_NGC[0],wfunc_NGC[1]))
+    theory_NGC = lambda x: ps_model_NGC.Evaluate_wincov(x)
+
+    ps_model_SGC.DefineWindowFunction(interp1d(wfunc_SGC[0],wfunc_SGC[1]))
+    theory_SGC = lambda x: ps_model_SGC.Evaluate_wincov(x)
+
+#theta = ["BNGC", "BSGC", "sigma_nl", "sigma_s", "a0", "a1", "a2", "a3", "a4", "alpha", "A_lin", "omega_lin", "phi"]
+#Create the theory for the whole data space
+def theory(theta):
+    theta_NGC = [theta[0],theta[2],theta[3],theta[4],theta[5],theta[6],theta[7],theta[8],theta[9],theta[10],theta[11],theta[12]]
+    theta_SGC = [theta[1],theta[2],theta[3],theta[4],theta[5],theta[6],theta[7],theta[8],theta[9],theta[10],theta[11],theta[12]]
+    return np.hstack((theory_NGC(theta_NGC),theory_SGC(theta_SGC)))
+
+#***************************************************************************************************
 invcov = np.linalg.inv(covariance)
 
-# Unpack the power spectrum
-k, DATA = poles.k, poles(ell=0).real
-
-# Initialize the model
-ps_model = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
-
-if (fn_wf_ngc is None) or (fn_wf_sgc is None):
-    PrimordialFeature_theory = lambda x: ps_model.Evaluate_bare(x)# NGC and SGC are concatenated
-
-else:
-
-    ps_model.DefineWindowFunction(interp1d(wfunc_NGC.T[0],wfunc_NGC.T[1]),
-                                    interp1d(wfunc_SGC.T[0],wfunc_SGC.T[1]))
-    PrimordialFeature_theory = lambda x: ps_model.Evaluate_wincov(x)# NGC and SGC are concatenated
-
 #Create the likelihood
-PrimordialFeature_likelihood = likelihood.likelihoods(PrimordialFeature_theory, DATA, invcov)
+PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
 
 # Initialize the MCMC
 mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle)
@@ -116,9 +144,10 @@ def logposterior(theta):
     else:
         return PrimordialFeature_likelihood.logGaussian(theta)
 
-
 initial_positions = [mcmc.create_walkers('uniform_prior') for _ in range(gelman_rubin['N'])]
 
+print(logposterior(initial_positions[0][0]))
+sys.exit(-1)
 if __name__ == '__main__':
     if MULTIPROCESSING:
         # Create a multiprocessing pool
