@@ -46,7 +46,7 @@ settings_getdist = {
 'ignore_rows':0,
 'fine_bins':2000,
 'fine_bins_2D':2000, 
-'smooth_scale_1D':0.01
+'smooth_scale_1D':0.1
 }
 
 #===================================================================================================
@@ -99,7 +99,7 @@ dir: Optional[str] = None) -> Union[np.ndarray, np.ndarray]:
     else:
         final_chain, final_logprob = None, None
         for i in range(n):
-            file_name = os.path.join(final_dir, f"{handle}_Run_{i}.h5")
+            file_name = os.path.join(final_dir, f"{handle}Run_{i}.h5")
             print(file_name)
             chain, logprob = read_chain(file_name, burnin_frac, thin)
             if final_chain is None:
@@ -254,6 +254,7 @@ def GetBinnedPosterior_1D(handle_list: List[str], range_limits: List[Union[float
                 print(f"Analysing range {range_limits[range_index]}")
             
             this_chain = load_chain(dir_out + this_handle)
+            
             omega_min, omega_max = range_limits[range_index]
             omega_bins = np.arange(omega_min, omega_max + omega_bin, omega_bin)
             omega_ctrs = 0.5 * (omega_bins[1:] + omega_bins[:-1])
@@ -321,6 +322,27 @@ def GetBinnedPosterior_1D(handle_list: List[str], range_limits: List[Union[float
         save_dataset(out_f, "A_cred_3sigma", np.asarray(A_cred_3sigma))
         save_dataset(out_f, "A_var", np.asarray(A_var))
         out_f.close()
+
+def apply_burnin(fname, out_f, n = 0, burnin = 0.2, thin = 10):
+    chain, logprob = get_total_chain(fname, n, burnin, thin)
+    with h5.File(out_f, 'w') as f:
+        save_dataset(f,'chain',chain)
+        save_dataset(f,'logprob',logprob)
 #===================================================================================================
 if __name__ == '__main__':
-    pass
+    
+    """
+    for i in range(2,11):
+        fname = f'/home/tmergulhao/primordial_features/chains/lin_range1_pk0_QSO_mock_{i}_dk_0.001_kmin_0.005_kmax_0.22.log'
+        fout = f'/home/tmergulhao/primordial_features/chains/total_lin_range1_pk0_QSO_mock_{i}_dk_0.001_kmin_0.005_kmax_0.22.log.h5'
+        apply_burnin(fname, fout, n=4, thin = 2)
+    """
+
+    handle_list = ['/home/tmergulhao/primordial_features/chains/total_lin_range1_pk0_QSO_mock_5_dk_0.001_kmin_0.005_kmax_0.22.log.h5']
+    range_limits = [[100,400]]
+    file_output = 'binned_posterior_total_lin_range1_pk0_QSO_mock_5_dk_0.001_kmin_0.005_kmax_0.22.h5'
+    dir_out = ''
+    param_map = {'omega':11, 'amplitude':10}
+    omega_bin = 10
+    GetBinnedPosterior_1D(handle_list,range_limits,file_output,dir_out,
+    param_map,verbose = True,omega_bin = omega_bin)
