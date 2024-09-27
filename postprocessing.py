@@ -19,7 +19,8 @@ from tqdm import tqdm
 from scipy.interpolate import UnivariateSpline, interp1d
 from scipy.integrate import quad
 from getdist import MCSamples
-from typing import List, Dict, Any, Optional, Callable,Union
+from typing import List, Dict, Any, Optional, Callable, Union
+
 #===================================================================================================
 #Analysis settings
 #===================================================================================================
@@ -45,12 +46,13 @@ settings_getdist = {
 'ignore_rows':0,
 'fine_bins':2000,
 'fine_bins_2D':2000, 
-'smooth_scale_1D':0.1
+'smooth_scale_1D':0.01
 }
+
 #===================================================================================================
 #Analysis toolkit
 #===================================================================================================
-def read_chain(file_name: str, burnin_frac: float, thin: int) -> Union(np.ndarray, np.ndarray):
+def read_chain(file_name: str, burnin_frac: float, thin: int) -> Union[np.ndarray, np.ndarray]:
     """
     Read an MCMC chain from an HDF5 file, applying burn-in and thinning.
 
@@ -70,9 +72,9 @@ def read_chain(file_name: str, burnin_frac: float, thin: int) -> Union(np.ndarra
     logprob = backend.get_log_prob(flat=True, discard=burnin, thin=thin)
     chain = backend.get_chain(flat=True, discard=burnin, thin=thin)
     return chain, logprob
-    
+
 def get_total_chain(handle: str, n: int, burnin_frac: float, thin: int, 
-dir: Optional[str] = None) -> Union(np.ndarray, np.ndarray):
+dir: Optional[str] = None) -> Union[np.ndarray, np.ndarray]:
     """
     Retrieve and combine MCMC chains from HDF5 files.
 
@@ -97,7 +99,7 @@ dir: Optional[str] = None) -> Union(np.ndarray, np.ndarray):
     else:
         final_chain, final_logprob = None, None
         for i in range(n):
-            file_name = os.path.join(final_dir, f"{handle}Run_{i}.h5")
+            file_name = os.path.join(final_dir, f"{handle}_Run_{i}.h5")
             print(file_name)
             chain, logprob = read_chain(file_name, burnin_frac, thin)
             if final_chain is None:
@@ -119,7 +121,10 @@ def load_chain(file_path: str) -> np.ndarray:
 
 def save_dataset(out_f, name: str, data, compression: str = "gzip", compression_opts: int = 9):
     """Save a dataset to the HDF5 file."""
-    out_f.create_dataset(name, data=data, compression=compression, compression_opts=compression_opts)
+    if np.isscalar(data):
+        out_f.create_dataset(name, data=data)
+    else:
+        out_f.create_dataset(name, data=data, compression=compression, compression_opts=compression_opts)
 
 def compute_posterior(samples: np.ndarray) -> np.ndarray:
     """Compute the posterior distribution for the amplitude."""
@@ -147,9 +152,78 @@ def compute_statistics(samples: np.ndarray) -> Union[np.ndarray, np.ndarray, np.
     variance = np.var(samples)
     return sigma_ranges[0], sigma_ranges[1], sigma_ranges[2],sigma_ranges[3],median,average,variance
 
-def GetBinnedPosterior_1D(handle_list: List[str], file_output: str, 
-                          range_limits: List[Union[float, float]], dir_out: str,omega_bin: int = 10, 
-                          verbose: bool = False, freq_column: int = 3) -> None:
+def GetCDFThresholdPoint_1D(posterior, threshold):
+    """Compute the credible interval on the primordial feature amplitude for different credible 
+    regions. More precisely, this function computes the value of A associated with:
+                                    P(abs(A_lin)<=A) = threshold,
+    for a given threshold.
+
+    Args:
+        posterior (np.array): The y-axis of the posterior.
+        threshold (float or list): A list or float associated with the credible percentage.
+
+    Returns:
+        float or list: The value of A associated with the credible region. The output is the same
+        as the input.
+    """
+    #Interporlate the posterior
+    interped_posterior = UnivariateSpline(A_ctrs, posterior, ext = 3)
+    
+    #List for the CDF values
+    CDF_result = []
+    
+    #Variable to storage the cumulative sum
+    cumsum = 0
+    
+    #Variable to storage the previous bin limit
+    previous_step = 0
+    
+    #Number of iterations
+    n_it = int(A_abs_max/A_abs_bin)
+    
+    #List of the A values associated with the CDF
+    A_axis = []
+    
+    for i in range(0, n_it-1):
+        new_abs_step = i*A_abs_bin
+        
+        #Get the integration ranges
+        range_int1 = [-new_abs_step, -previous_step]
+        range_int2 = [previous_step, new_abs_step]
+
+        #Perform the integral in each range and sum them
+        try:
+            int1 = quad(interped_posterior,range_int1[0], range_int1[1])[0]
+            int2 = quad(interped_posterior,range_int2[0], range_int2[1])[0]
+        except:
+            print("Problem with integration range when computing the CDF!")            
+            print(range_int1)
+            sys.exit(-1)
+        cumsum += int1 + int2
+        
+        #Storage the CDF for this step
+        CDF_result.append(cumsum)
+        
+        #Storage the A value for this step
+        A_axis.append(0.5*(previous_step+new_abs_step))
+        previous_step = new_abs_step
+
+    inv_CDF_interped = interp1d(CDF_result, A_axis)
+    if isinstance(threshold, list):
+        output = []
+        for x in threshold:
+            try:
+                output.append(inv_CDF_interped(x))
+            except:
+                print("Error saturated the maximum allowed value!")
+                output.append(A_abs_max)
+        return output
+    else:
+        return inv_CDF_interped(threshold)
+
+def GetBinnedPosterior_1D(handle_list: List[str], range_limits: List[Union[float, float]], 
+    file_output: str, dir_out: str, param_map:Dict, omega_bin: int = 10, 
+    verbose: bool = False) -> None:
     """
     Bin the MCMC samples along the feature frequency and then make a histogram on the sampled
     values of amplitude to get the posterior.
@@ -168,84 +242,85 @@ def GetBinnedPosterior_1D(handle_list: List[str], file_output: str,
     Returns:
         None: This function does not return any value. It saves the results in an HDF5 file.
     """
-    try:
-        out_f = h5.File(dir_out + file_output + ".h5", 'w')
-    except Exception as e:
-        print(f"Problem opening the file: {e}")
-        return
+    with h5.File(dir_out+file_output,'w') as out_f:
+        # Arrays to store the results
+        A_1sigma, A_2sigma, A_3sigma, A_4sigma = [], [], [], []
+        A_median, A_average, A_var = [], [], []
+        A_cred_1sigma, A_cred_2sigma, A_cred_3sigma = [],[],[]
+        n_1sigma, n_2sigma, n_3sigma, n_4sigma = 0, 0, 0, 0
 
-    # Arrays to store the results
-    A_1sigma, A_2sigma, A_3sigma, A_4sigma = [], [], [], []
-    A_median, A_average, A_var = [], [], []
-    A_cred_1sigma, A_cred_2sigma, A_cred_3sigma = [], [], []
-    n_1sigma, n_2sigma, n_3sigma, n_4sigma = 0, 0, 0, 0
-
-    for range_index, this_handle in enumerate(handle_list):
-        if verbose:
-            print(f"Analysing range {range_limits[range_index]}")
-        
-        this_chain = load_chain(dir_out + this_handle)
-        omega_min, omega_max = range_limits[range_index]
-        omega_bins = np.arange(omega_min, omega_max + omega_bin, omega_bin)
-        omega_ctrs = 0.5 * (omega_bins[1:] + omega_bins[:-1])
-
-        for i in range(1, len(omega_bins)):
-            bin_handle = f"[{omega_bins[i-1]}, {omega_bins[i]}]"
+        for range_index, this_handle in enumerate(handle_list):
             if verbose:
-                print(f"Looking at bin: {bin_handle}")
+                print(f"Analysing range {range_limits[range_index]}")
+            
+            this_chain = load_chain(dir_out + this_handle)
+            omega_min, omega_max = range_limits[range_index]
+            omega_bins = np.arange(omega_min, omega_max + omega_bin, omega_bin)
+            omega_ctrs = 0.5 * (omega_bins[1:] + omega_bins[:-1])
 
-            first_mask = (this_chain[freq_column] >= omega_bins[i-1]) & \
-                (this_chain[freq_column] < omega_bins[i])
-            masked_chain = this_chain.T[first_mask]
+            for i in range(1, len(omega_bins)):
+                bin_handle = f"[{omega_bins[i-1]}, {omega_bins[i]}]"
+                if verbose:
+                    print(f"Looking at bin: {bin_handle}")
 
-            if verbose:
-                print(f"Samples inside that bin: {masked_chain.shape[0]}")
+                first_mask = (this_chain[param_map['omega']] >= omega_bins[i-1]) & \
+                    (this_chain[param_map['omega']] < omega_bins[i])
+                masked_chain = this_chain.T[first_mask]
+                sampled_amplitudes = masked_chain.T[param_map['amplitude']]
+                if verbose:
+                    print(f"Samples inside that bin: {masked_chain.shape[0]}")
 
-            posterior_discrete = compute_posterior(masked_chain.T[1])
-            posterior_output = np.vstack((A_ctrs, posterior_discrete))
-            save_dataset(out_f, f"posterior:{bin_handle}", posterior_output)
+                try:
+                    posterior_discrete = compute_posterior(sampled_amplitudes)
+                    posterior_output = np.vstack((A_ctrs, posterior_discrete))
+                    save_dataset(out_f, f"posterior:{bin_handle}", posterior_output)
 
-            new_samples = draw_samples(posterior_discrete)
-            sigma_ranges = compute_statistics(new_samples)
-            A_1sigma.append(sigma_ranges[0])
-            A_2sigma.append(sigma_ranges[1])
-            A_3sigma.append(sigma_ranges[2])
-            A_4sigma.append(sigma_ranges[3])
-            A_median.append(sigma_ranges[4])
-            A_average.append(sigma_ranges[5])
-            A_var.append(sigma_ranges[6])
+                    new_samples = draw_samples(posterior_discrete)
+                    sigma_ranges = compute_statistics(new_samples)
+                    A_1sigma.append(sigma_ranges[0])
+                    A_2sigma.append(sigma_ranges[1])
+                    A_3sigma.append(sigma_ranges[2])
+                    A_4sigma.append(sigma_ranges[3])
+                    A_median.append(sigma_ranges[4])
+                    A_average.append(sigma_ranges[5])
+                    A_var.append(sigma_ranges[6])
+                except:
+                    A_cred_1sigma.append(0)
+                    A_cred_2sigma.append(0)
+                    A_cred_3sigma.append(0)
+                    continue
 
-            if not ((0 > sigma_ranges[0][0]) & (0 < sigma_ranges[0][1])):
-                n_1sigma += 1
-            if not ((0 > sigma_ranges[1][0]) & (0 < sigma_ranges[1][1])):
-                n_2sigma += 1
-            if not ((0 > sigma_ranges[2][0]) & (0 < sigma_ranges[2][1])):
-                n_3sigma += 1
-            if not ((0 > sigma_ranges[3][0]) & (0 < sigma_ranges[3][1])):
-                n_4sigma += 1
+                if not ((0 > sigma_ranges[0][0]) & (0 < sigma_ranges[0][1])):
+                    n_1sigma += 1
+                if not ((0 > sigma_ranges[1][0]) & (0 < sigma_ranges[1][1])):
+                    n_2sigma += 1
+                if not ((0 > sigma_ranges[2][0]) & (0 < sigma_ranges[2][1])):
+                    n_3sigma += 1
+                if not ((0 > sigma_ranges[3][0]) & (0 < sigma_ranges[3][1])):
+                    n_4sigma += 1
 
-            #credible = GetCDFThresholdPoint_1D_getdist(posterior_discrete, norm, [0.682689, 0.954499, 0.997300203])
-            #A_cred_1sigma.append(credible[0])
-            #A_cred_2sigma.append(credible[1])
-            #A_cred_3sigma.append(credible[2])
+                credible = GetCDFThresholdPoint_1D(posterior_discrete, [0.682689, 0.954499, 0.997300203])
+                A_cred_1sigma.append(credible[0])
+                A_cred_2sigma.append(credible[1])
+                A_cred_3sigma.append(credible[2])
 
-    save_dataset(out_f, "n_1sigma", n_1sigma)
-    save_dataset(out_f, "n_2sigma", n_2sigma)
-    save_dataset(out_f, "n_3sigma", n_3sigma)
-    save_dataset(out_f, "n_4sigma", n_4sigma)
-    save_dataset(out_f, "1sigma", np.asarray(A_1sigma))
-    save_dataset(out_f, "2sigma", np.asarray(A_2sigma))
-    save_dataset(out_f, "3sigma", np.asarray(A_3sigma))
-    save_dataset(out_f, "4sigma", np.asarray(A_4sigma))
-    save_dataset(out_f, "omega_ctrs", np.asarray(omega_ctrs))
-    save_dataset(out_f, "omega_bin", omega_bin)
-    save_dataset(out_f, "A_median", np.asarray(A_median))
-    save_dataset(out_f, "A_average", np.asarray(A_average))
-    save_dataset(out_f, "A_cred_1sigma", np.asarray(A_cred_1sigma))
-    save_dataset(out_f, "A_cred_2sigma", np.asarray(A_cred_2sigma))
-    save_dataset(out_f, "A_cred_3sigma", np.asarray(A_cred_3sigma))
-    save_dataset(out_f, "A_var", np.asarray(A_var))
-    out_f.close()
+        save_dataset(out_f, "n_1sigma", n_1sigma)
+        save_dataset(out_f, "n_2sigma", n_2sigma)
+        save_dataset(out_f, "n_3sigma", n_3sigma)
+        save_dataset(out_f, "n_4sigma", n_4sigma)
+        save_dataset(out_f, "1sigma", np.asarray(A_1sigma))
+        save_dataset(out_f, "2sigma", np.asarray(A_2sigma))
+        save_dataset(out_f, "3sigma", np.asarray(A_3sigma))
+        save_dataset(out_f, "4sigma", np.asarray(A_4sigma))
+        save_dataset(out_f, "omega_ctrs", np.asarray(omega_ctrs))
+        save_dataset(out_f, "omega_bin", omega_bin)
+        save_dataset(out_f, "A_median", np.asarray(A_median))
+        save_dataset(out_f, "A_average", np.asarray(A_average))
+        save_dataset(out_f, "A_cred_1sigma", np.asarray(A_cred_1sigma))
+        save_dataset(out_f, "A_cred_2sigma", np.asarray(A_cred_2sigma))
+        save_dataset(out_f, "A_cred_3sigma", np.asarray(A_cred_3sigma))
+        save_dataset(out_f, "A_var", np.asarray(A_var))
+        out_f.close()
 #===================================================================================================
 if __name__ == '__main__':
     pass

@@ -57,6 +57,14 @@ class MCMC:
         for index, key in enumerate(dic.keys()):
             self.labels.append(key)
             self.prior_bounds[0, index], self.prior_bounds[1, index] = dic[key]
+        
+        self.chain_dir = os.getcwd()+'/chains'
+
+    def change_chain_dir(self,new_dir):
+        self.chain_dir = new_dir
+
+    def change_fig_dir(self,new_dir):
+        self.fig_dir = new_dir
 
     def set_walkers(self, nwalkers: int) -> None:
         """
@@ -208,17 +216,16 @@ class MCMC:
             criteria. Defaults to None.
             save (bool, optional): Whether to save the plot to a file. Defaults to True.
         """
-        chain_dir = os.path.join(os.getcwd(), 'chains')
-
+    
         if gelman_rubins:
             N = gelman_rubins['N']
             samplers = []
             for i in range(N):
-                filename = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
+                filename = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(filename, read_only=True)
                 samplers.append(backend)
         else:
-            filename = os.path.join(chain_dir, f'{handle}.h5')
+            filename = os.path.join(self.chain_dir, f'{handle}.h5')
             backend = emcee.backends.HDFBackend(filename, read_only=True)
             samplers = [backend]
 
@@ -255,17 +262,17 @@ class MCMC:
             criteria. Defaults to None.
             save (bool, optional): Whether to save the plot to a file. Defaults to True.
         """
-        chain_dir = os.path.join(os.getcwd(), 'chains')
+        
 
         if gelman_rubins:
             N = gelman_rubins['N']
             samplers = []
             for i in range(N):
-                filename = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
+                filename = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(filename, read_only=True)
                 samplers.append(backend)
         else:
-            filename = os.path.join(chain_dir, f'{handle}.h5')
+            filename = os.path.join(self.chain_dir, f'{handle}.h5')
             backend = emcee.backends.HDFBackend(filename, read_only=True)
             samplers = [backend]
 
@@ -318,12 +325,12 @@ class MCMC:
             'smooth_scale_1D': 0.3, 
             'smooth_scale_2D': 0.2}.
         """
-        chain_dir = os.path.join(os.getcwd(), 'chains')
+        
         
         if gelman_rubins is not None:
             N_chains = gelman_rubins['N']
             for i in range(N_chains):
-                name = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
+                name = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
                 chain = backend.get_chain(flat=False)
                 chain_size = chain.shape[0]
@@ -335,7 +342,7 @@ class MCMC:
                 else:
                     final_chain = np.vstack((final_chain, chain))
         else:
-            name = os.path.join(chain_dir, f'{handle}.h5')
+            name = os.path.join(self.chain_dir, f'{handle}.h5')
             backend = emcee.backends.HDFBackend(name, read_only=True)
             chain = backend.get_chain(flat=False)
             chain_size = chain.shape[0]
@@ -368,12 +375,12 @@ class MCMC:
             handle (str): Handle for the chain files.
             gelman (Dict, optional): Gelman-Rubin diagnostic results. Defaults to None.
         """
-        chain_dir = os.path.join(os.getcwd(), 'chains')
+        
 
         if gelman_rubins is not None:
             N_chains = gelman_rubins['N']
             for i in range(N_chains):
-                name = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
+                name = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
                 chain = backend.get_chain(flat=False)
                 chain_size = chain.shape[0]
@@ -385,7 +392,7 @@ class MCMC:
                 else:
                     final_chain = np.vstack((final_chain, chain))
         else:
-            name = os.path.join(chain_dir, f'{handle}.h5')
+            name = os.path.join(self.chain_dir, f'{handle}.h5')
             backend = emcee.backends.HDFBackend(name, read_only=True)
             chain = backend.get_chain(flat=False)
             chain_size = chain.shape[0]
@@ -466,7 +473,7 @@ class MCMC:
             criteria. Defaults to None.
         """
         try_mkdir('chains')
-        chain_dir = os.path.join(os.getcwd(), 'chains')
+        
 
         autocorr = []
         acceptance = []
@@ -509,7 +516,7 @@ class MCMC:
 
             # Create all the samplers and their walkers
             for i in range(N):
-                filename = os.path.join(chain_dir, f'{name}Run_{i}.h5')
+                filename = os.path.join(self.chain_dir, f'{name}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(filename)
                 sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, loglikelihood,
                  args=args, backend=backend, moves=[emcee.moves.StretchMove(a=a)], pool=pool)
@@ -567,7 +574,7 @@ class MCMC:
             self.logger.info('Done!')
         else:
             # Run the sampler for a fixed number of steps
-            filename = os.path.join(chain_dir, f'{name}.h5')
+            filename = os.path.join(self.chain_dir, f'{name}.h5')
             backend = emcee.backends.HDFBackend(filename)
             sampler = emcee.EnsembleSampler(
                 self.nwalkers, self.ndim, loglikelihood, args=args, backend=backend,
@@ -580,8 +587,8 @@ class MCMC:
                             tau = sampler.get_autocorr_time(tol=0)
                             autocorr.append(np.mean(tau))
                             acceptance.append(np.mean(sampler.acceptance_fraction))
-                            np.savetxt(os.path.join(chain_dir, f'{name}_tau.txt'), autocorr)
-                            np.savetxt(os.path.join(chain_dir, f'{name}_acceptance.txt'), acceptance)
+                            np.savetxt(os.path.join(self.chain_dir, f'{name}_tau.txt'), autocorr)
+                            np.savetxt(os.path.join(self.chain_dir, f'{name}_acceptance.txt'), acceptance)
                             self.logger.info(f'Mean acceptance fraction: {np.mean(sampler.acceptance_fraction)}')
                             self.logger.info(f'Mean autocorrelation time: {np.mean(tau)}')
                         except emcee.autocorr.AutocorrError:
@@ -595,8 +602,8 @@ class MCMC:
                             tau = sampler.get_autocorr_time(tol=0)
                             autocorr.append(np.mean(tau))
                             acceptance.append(np.mean(sampler.acceptance_fraction))
-                            np.savetxt(os.path.join(chain_dir, f'{name}_tau.txt'), autocorr)
-                            np.savetxt(os.path.join(chain_dir, f'{name}_acceptance.txt'), acceptance)
+                            np.savetxt(os.path.join(self.chain_dir, f'{name}_tau.txt'), autocorr)
+                            np.savetxt(os.path.join(self.chain_dir, f'{name}_acceptance.txt'), acceptance)
                             self.logger.info(f'Mean acceptance fraction: {np.mean(sampler.acceptance_fraction)}')
                             self.logger.info(f'Mean autocorrelation time: {np.mean(tau)}')
                         except emcee.autocorr.AutocorrError:
@@ -623,12 +630,12 @@ class MCMC:
             Returns:
                 np.ndarray: An array with the parameter samples.
             """
-            chain_dir = os.path.join(os.getcwd(), 'chains')
+            
 
             if gelman is not None:
                 N_chains = gelman['N']
                 for i in range(N_chains):
-                    name = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
+                    name = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                     backend = emcee.backends.HDFBackend(name, read_only=True)
                     chain = backend.get_chain(flat=False)
                     chain_size = chain.shape[0]
@@ -639,7 +646,7 @@ class MCMC:
                     else:
                         final_chain = np.vstack((final_chain, chain))
             else:
-                name = os.path.join(chain_dir, f'{handle}.h5')
+                name = os.path.join(self.chain_dir, f'{handle}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
                 chain = backend.get_chain(flat=False)
                 chain_size = chain.shape[0]
@@ -660,12 +667,12 @@ class MCMC:
         Returns:
             np.ndarray: An array with the parameters that give the best fit to the data.
         """
-        chain_dir = os.path.join(os.getcwd(), 'chains')
+        
 
         if gelman is not None:
             N_chains = gelman['N']
             for i in range(N_chains):
-                name = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
+                name = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
                 chain = backend.get_chain(flat=False)
                 chain_size = chain.shape[0]
@@ -679,7 +686,7 @@ class MCMC:
                     final_chain = np.vstack((final_chain, chain))
                     final_logprob = np.hstack((final_logprob, logprob))
         else:
-            name = os.path.join(chain_dir, f'{handle}.h5')
+            name = os.path.join(self.chain_dir, f'{handle}.h5')
             backend = emcee.backends.HDFBackend(name, read_only=True)
             chain = backend.get_chain(flat=False)
             chain_size = chain.shape[0]
@@ -703,12 +710,11 @@ class MCMC:
         Returns:
             np.ndarray: An array with the log-probabilities.
         """
-        chain_dir = os.path.join(os.getcwd(), 'chains')
 
         if gelman is not None:
             N_chains = gelman['N']
             for i in range(N_chains):
-                name = os.path.join(chain_dir, f'{handle}Run_{i}.h5')
+                name = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
                 chain = backend.get_chain(flat=False)
                 chain_size = chain.shape[0]
@@ -719,7 +725,7 @@ class MCMC:
                 else:
                     final_logprob = np.hstack((final_logprob, logprob))
         else:
-            name = os.path.join(chain_dir, f'{handle}.h5')
+            name = os.path.join(self.chain_dir, f'{handle}.h5')
             backend = emcee.backends.HDFBackend(name, read_only=True)
             chain = backend.get_chain(flat=False)
             chain_size = chain.shape[0]
