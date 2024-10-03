@@ -20,7 +20,6 @@ from scipy.interpolate import UnivariateSpline, interp1d
 from scipy.integrate import quad
 from getdist import MCSamples
 from typing import List, Dict, Any, Optional, Callable, Union
-
 #===================================================================================================
 #Analysis settings
 #===================================================================================================
