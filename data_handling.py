@@ -25,7 +25,8 @@ def load_data(filename):
     return np.loadtxt(filename)
 
 def load_cov(filename):
-    """Function to load the data covariance with dimensions len(data) X len(data).
+    """Function to load the data covariance with dimensions 2*len(data) X 2*len(data) (the factor
+    of 2 comes after combining NGC with SGC)
 
     Args:
         filename (str):A string with the path to the file.

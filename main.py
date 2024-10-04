@@ -52,7 +52,8 @@ priors_dir = os.getenv('PRIORS_DIR')
 nwalkers_per_param = int(os.getenv('NWALKERS_PER_PARAM'))
 
 # Configure logging
-handle = '_'.join([prior_name, DATA_file.split('/')[-1].split('.npy')[0]])+'.log'
+handle_log = '_'.join([prior_name, DATA_file.split('/')[-1].split('.npy')[0]])+'.log'
+handle = '_'.join([prior_name, DATA_file.split('/')[-1].split('.npy')[0]])
 
 logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -137,7 +138,7 @@ invcov = np.linalg.inv(covariance)
 PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
 
 # Initialize the MCMC
-mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle)
+mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle_log)
 mcmc.set_walkers(nwalkers_per_param * mcmc.ndim)
 
 in_prior_range = mcmc.in_prior
