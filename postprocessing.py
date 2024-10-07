@@ -119,8 +119,7 @@ def load_chain(file_path: str) -> np.ndarray:
         raise
 
 def BinnedPosterior(handle_list: List[str], binning_limits: List[Union[float, float]], 
-    file_output: str, binning_id: int, freq_bin: int = 10, 
-    verbose: bool = False) -> None:
+    file_output: str, binning_id: int, freq_bin: int = 10) -> None:
     """
     Bin the MCMC samples along the feature frequency and then make a histogram on the sampled
     values of amplitude to get the posterior.
@@ -156,18 +155,82 @@ def BinnedPosterior(handle_list: List[str], binning_limits: List[Union[float, fl
             mapping = np.digitize(binning_samples,binning_edges)
             for sample_i,bin_it_belongs in tqdm(enumerate(mapping)):
                 binned_posterior[keys(bin_it_belongs)].append(chain.T[sample_i])
-        
         # Save the binned posterior to the HDF5 file
         for bin_label, samples in binned_posterior.items():
             out_f.create_dataset(bin_label, data=np.array(samples),
             compression='gzip', compression_opts=9)
+
+def save_dataset(out_f, name: str, data, compression: str = "gzip", compression_opts: int = 9):
+    """Save a dataset to the HDF5 file."""
+    if np.isscalar(data):
+        out_f.create_dataset(name, data=data)
+    else:
+        out_f.create_dataset(name, data=data, compression=compression, compression_opts=compression_opts)
+
+def apply_burnin(fname, out_f, n = 0, burnin = 0.2, thin = 10):
+    chain, logprob = get_total_chain(fname, n, burnin, thin)
+    with h5.File(out_f, 'w') as f:
+        save_dataset(f,'chain',chain)
+        save_dataset(f,'logprob',logprob)
+
+def compute_sigma_intervals(samples):
+    # Sort the samples
+    sorted_samples = np.sort(samples)
+    
+    # Compute the percentiles for 1σ, 2σ, 3σ, and 4σ
+    one_sigma = np.percentile(sorted_samples, [15.865, 84.135])
+    two_sigma = np.percentile(sorted_samples, [2.275, 97.725])
+    three_sigma = np.percentile(sorted_samples, [0.135, 99.865])
+    
+    return one_sigma, two_sigma, three_sigma
+
+def compute_a_star(samples):
+    # Take the absolute value of the samples
+    abs_samples = np.abs(samples)
+    
+    # Compute the percentiles for 1σ, 2σ, and 3σ
+    a_star_1sigma = np.percentile(abs_samples, 68.27)
+    a_star_2sigma = np.percentile(abs_samples, 95.45)
+    a_star_3sigma = np.percentile(abs_samples, 99.73)
+    
+    return a_star_1sigma, a_star_2sigma, a_star_3sigma
+
+def process_h5_file(input_file, output_file):
+    with h5.File(input_file, 'r') as infile, h5.File(output_file, 'w') as outfile:
+        for key in infile.keys():
+            samples = np.stack(infile[key][:]).T[10]
+            print(samples)
+            sys.exit(-1)
+            one_sigma, two_sigma, three_sigma = compute_sigma_intervals(samples)
+            a_star_1sigma, a_star_2sigma, a_star_3sigma = compute_a_star(samples)
             
+            # Save results in the output file
+            results = {
+                'one_sigma': one_sigma,
+                'two_sigma': two_sigma,
+                'three_sigma': three_sigma,
+                'a_star_1sigma': a_star_1sigma,
+                'a_star_2sigma': a_star_2sigma,
+                'a_star_3sigma': a_star_3sigma
+            }
+            outfile.create_group(key)
+            for result_key, result_value in results.items():
+                outfile[key].create_dataset(result_key, data=result_value)
 #===================================================================================================
 if __name__ == '__main__':
+    """
+    fin = '/home/tmergulhao/primordial_features/chains/binned_posterior_lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock1_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5'
+    fout = '/home/tmergulhao/primordial_features/chains/processed_lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock1_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5'
+    process_h5_file(fin,fout)
+    """
+    for i in range(1,2):
+        file = '/home/tmergulhao/primordial_features/chains/lin_range1_pk0_QSO_mock_{}_dk_0.001_kmin_0.005_kmax_0.22_'
+        outf = '/home/tmergulhao/primordial_features/chains/lin_range1_pk0_QSO_mock_{}_dk_0.001_kmin_0.005_kmax_0.22'
+        apply_burnin(file.format(i),outf.format(i),n=1,burnin=0.5)
 
-    handle_list = ['/home/tmergulhao/primordial_features/chains/total_lin_range1_pk0_QSO_mock_1_dk_0.001_kmin_0.005_kmax_0.22.h5']
-    range_limits = [[100,900]]
-    file_output = '/home/tmergulhao/primordial_features/chains/binned_posterior_total_lin_range1_pk0_QSO_mock_5_dk_0.001_kmin_0.005_kmax_0.22.h5'
-    omega_bin = 10
-    binning_axis = 11
-    BinnedPosterior(handle_list,range_limits,file_output,binning_axis)
+        handle_list = [outf.format(i)]
+        range_limits = [[100,900]]
+        file_output = '/home/tmergulhao/primordial_features/chains/binned_posterior_lin_range1_pk0_QSO_mock_{}_dk_0.001_kmin_0.005_kmax_0.22'
+        omega_bin = 10
+        binning_axis = 11
+        BinnedPosterior(handle_list,range_limits,file_output.format(i),binning_axis)
