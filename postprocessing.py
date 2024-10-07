@@ -22,6 +22,7 @@ from getdist import MCSamples
 from typing import List, Dict, Any, Optional, Callable, Union
 # Get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
+
 #===================================================================================================
 #Analysis settings
 #===================================================================================================
@@ -74,33 +75,29 @@ def read_chain_emcee(file_name: str, burnin_frac: float, thin: int) -> Union[np.
     chain = backend.get_chain(flat=True, discard=burnin, thin=thin)
     return chain, logprob
 
-def get_total_chain(handle: str, n: int, burnin_frac: float, thin: int, 
-dir: Optional[str] = None) -> Union[np.ndarray, np.ndarray]:
+def get_total_chain(handle: str, out_f: str, n: int, burnin_frac: float, thin: int, 
+compression="gzip", compression_opts=9):
     """
-    Retrieve and combine MCMC chains from HDF5 files.
+    Retrieve, combine, and save MCMC chains from HDF5 files.
 
     Args:
         handle (str): The base name of the HDF5 files containing the MCMC chains.
+        out_f (str): The output HDF5 file to save the processed chains.
         n (int): The number of chains to combine. If n is 0, reads a single chain.
         burnin_frac (float): The fraction of the initial part of the chain to discard as burn-in.
         thin (int): The thinning factor to apply to the chain.
-        dir (str, optional): An optional subdirectory within the chains directory where the HDF5 
-        files are located.
-
-    Returns:
-        np.ndarray: The combined MCMC chain after applying burn-in and thinning.
-        np.ndarray: The combined log-probabilities corresponding to the chain.
+        compression (str): Compression type for HDF5 datasets.
+        compression_opts (int): Compression options for HDF5 datasets.
     """
-    final_dir = 'chains/'
 
     if n == 0:
-        file_name = os.path.join(final_dir, f"{handle}.h5")
+        file_name = os.path.join(f"{handle}.h5")
         print(file_name)
         final_chain, final_logprob = read_chain_emcee(file_name, burnin_frac, thin)
     else:
         final_chain, final_logprob = None, None
         for i in range(n):
-            file_name = os.path.join(final_dir, f"{handle}Run_{i}.h5")
+            file_name = os.path.join(f"{handle}Run_{i}.h5")
             print(file_name)
             chain, logprob = read_chain_emcee(file_name, burnin_frac, thin)
             if final_chain is None:
@@ -108,7 +105,20 @@ dir: Optional[str] = None) -> Union[np.ndarray, np.ndarray]:
             else:
                 final_chain = np.vstack((final_chain, chain))
                 final_logprob = np.hstack((final_logprob, logprob))
-    return final_chain, final_logprob
+
+    with h5.File(out_f, 'w') as f:
+        if np.isscalar(final_chain):
+            f.create_dataset('chain', data=final_chain)
+        else:
+            f.create_dataset('chain', data=final_chain, compression=compression, 
+            compression_opts=compression_opts)
+
+        if np.isscalar(final_logprob):
+            f.create_dataset('logprob', data=final_logprob)
+        else:
+            f.create_dataset('logprob', data=final_logprob, compression=compression, 
+            compression_opts=compression_opts)
+
 
 def load_chain(file_path: str) -> np.ndarray:
     """Load the MCMC chain from an HDF5 file."""
@@ -120,11 +130,10 @@ def load_chain(file_path: str) -> np.ndarray:
         print(f"Problem loading the file {file_path}: {e}")
         raise
 
-def BinnedPosterior(handle_list: List[str], binning_limits: List[Union[float, float]], 
+def BinnedChain(handle_list: List[str], binning_limits: List[Union[float, float]], 
     file_output: str, binning_id: int, freq_bin: int = 10) -> None:
     """
-    Bin the MCMC samples along the feature frequency and then make a histogram on the sampled
-    values of amplitude to get the posterior.
+    Bin the MCMC samples along the feature frequency.
 
     Args:
         handle_list (List[str]): A list of strings with the chain files to open.
@@ -162,77 +171,114 @@ def BinnedPosterior(handle_list: List[str], binning_limits: List[Union[float, fl
             out_f.create_dataset(bin_label, data=np.array(samples),
             compression='gzip', compression_opts=9)
 
-def save_dataset(out_f, name: str, data, compression: str = "gzip", compression_opts: int = 9):
-    """Save a dataset to the HDF5 file."""
-    if np.isscalar(data):
-        out_f.create_dataset(name, data=data)
-    else:
-        out_f.create_dataset(name, data=data, compression=compression, compression_opts=compression_opts)
+def compute_credible_intervals(samples):
+    """
+    Compute the credible intervals for MCMC samples.
 
-def apply_burnin(fname, out_f, n = 0, burnin = 0.2, thin = 10):
-    chain, logprob = get_total_chain(fname, n, burnin, thin)
-    with h5.File(out_f, 'w') as f:
-        save_dataset(f,'chain',chain)
-        save_dataset(f,'logprob',logprob)
+    Args:
+        samples (np.ndarray): A 2D array of MCMC samples, where each row represents a parameter.
 
-def compute_sigma_intervals(samples):
-    # Sort the samples
+    Returns:
+        tuple: Three arrays representing the 1σ, 2σ, and 3σ credible intervals.
+    """
     sorted_samples = np.sort(samples)
-    
-    # Compute the percentiles for 1σ, 2σ, 3σ, and 4σ
-    one_sigma = np.percentile(sorted_samples, [15.865, 84.135])
-    two_sigma = np.percentile(sorted_samples, [2.275, 97.725])
-    three_sigma = np.percentile(sorted_samples, [0.135, 99.865])
+    one_sigma = np.percentile(sorted_samples, [15.865, 84.135], axis=1)
+    two_sigma = np.percentile(sorted_samples, [2.275, 97.725], axis=1)
+    three_sigma = np.percentile(sorted_samples, [0.135, 99.865], axis=1)
     
     return one_sigma, two_sigma, three_sigma
 
-def compute_a_star(samples):
-    # Take the absolute value of the samples
+def compute_mean(samples):
+    """
+    Compute the mean of MCMC samples.
+
+    Args:
+        samples (np.ndarray): A 2D array of MCMC samples, where each row represents a parameter.
+
+    Returns:
+        np.ndarray: An array of means for each parameter.
+    """
+    return np.mean(samples, axis=1)
+
+def compute_std(samples):
+    """
+    Compute the standard deviation of MCMC samples.
+
+    Args:
+        samples (np.ndarray): A 2D array of MCMC samples, where each row represents a parameter.
+
+    Returns:
+        np.ndarray: An array of standard deviations for each parameter.
+    """
+    return np.std(samples, axis=1)
+
+def compute_abs_credible(samples):
+    """
+    Compute the absolute credible intervals for MCMC samples.
+
+    Args:
+        samples (np.ndarray): A 2D array of MCMC samples, where each row represents a parameter.
+
+    Returns:
+        tuple: Three arrays representing the absolute 1σ, 2σ, and 3σ credible intervals.
+    """
     abs_samples = np.abs(samples)
-    
-    # Compute the percentiles for 1σ, 2σ, and 3σ
-    a_star_1sigma = np.percentile(abs_samples, 68.27)
-    a_star_2sigma = np.percentile(abs_samples, 95.45)
-    a_star_3sigma = np.percentile(abs_samples, 99.73)
+    a_star_1sigma = np.percentile(abs_samples, 68.27, axis=1)
+    a_star_2sigma = np.percentile(abs_samples, 95.45, axis=1)
+    a_star_3sigma = np.percentile(abs_samples, 99.73, axis=1)
     
     return a_star_1sigma, a_star_2sigma, a_star_3sigma
 
-def process_h5_file(input_file, output_file):
-    with h5.File(input_file, 'r') as infile, h5.File(output_file, 'w') as outfile:
-        for key in infile.keys():
-            samples = np.stack(infile[key][:]).T[10]
-            print(samples)
-            sys.exit(-1)
-            one_sigma, two_sigma, three_sigma = compute_sigma_intervals(samples)
-            a_star_1sigma, a_star_2sigma, a_star_3sigma = compute_a_star(samples)
-            
-            # Save results in the output file
-            results = {
-                'one_sigma': one_sigma,
-                'two_sigma': two_sigma,
-                'three_sigma': three_sigma,
-                'a_star_1sigma': a_star_1sigma,
-                'a_star_2sigma': a_star_2sigma,
-                'a_star_3sigma': a_star_3sigma
-            }
-            outfile.create_group(key)
-            for result_key, result_value in results.items():
-                outfile[key].create_dataset(result_key, data=result_value)
-#===================================================================================================
-if __name__ == '__main__':
+def compute_and_save_statistics(file_input: str, file_output: str = None):
     """
-    fin = '/home/tmergulhao/primordial_features/chains/binned_posterior_lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock1_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5'
-    fout = '/home/tmergulhao/primordial_features/chains/processed_lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock1_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5'
-    process_h5_file(fin,fout)
-    """
-    for i in range(1,2):
-        file = '/home/tmergulhao/primordial_features/chains/lin_range1_pk0_QSO_mock_{}_dk_0.001_kmin_0.005_kmax_0.22_'
-        outf = '/home/tmergulhao/primordial_features/chains/lin_range1_pk0_QSO_mock_{}_dk_0.001_kmin_0.005_kmax_0.22'
-        apply_burnin(file.format(i),outf.format(i),n=1,burnin=0.5)
+    Compute statistics from the binned MCMC samples and save them to an HDF5 file or return them.
 
-        handle_list = [outf.format(i)]
-        range_limits = [[100,900]]
-        file_output = '/home/tmergulhao/primordial_features/chains/binned_posterior_lin_range1_pk0_QSO_mock_{}_dk_0.001_kmin_0.005_kmax_0.22'
-        omega_bin = 10
-        binning_axis = 11
-        BinnedPosterior(handle_list,range_limits,file_output.format(i),binning_axis)
+    Args:
+        file_input (str): The HDF5 file containing the binned MCMC samples.
+        file_output (str, optional): The HDF5 file to save the computed statistics. If not provided, returns the results.
+
+    Returns:
+        dict: A dictionary containing computed statistics for each bin if no file_output is provided.
+    """
+    statistics = {}
+
+    with h5.File(file_input, 'r') as f_in:
+        for bin_label in f_in.keys():
+            samples = f_in[bin_label][:].T
+            
+            # Compute statistics
+            one_sigma, two_sigma, three_sigma = compute_credible_intervals(samples)
+            mean = compute_mean(samples)
+            std = compute_std(samples)
+            a_star_1sigma, a_star_2sigma, a_star_3sigma = compute_abs_credible(samples)
+            
+            # Store results in the dictionary
+            statistics[bin_label] = {
+                'mean': mean,
+                'std': std,
+                'credible_intervals': {
+                    '1_sigma': one_sigma,
+                    '2_sigma': two_sigma,
+                    '3_sigma': three_sigma
+                },
+                'abs_credible': {
+                    '1_sigma': a_star_1sigma,
+                    '2_sigma': a_star_2sigma,
+                    '3_sigma': a_star_3sigma
+                }
+            }
+
+    if file_output:
+        with h5.File(file_output, 'w') as f_out:
+            for bin_label, stats in statistics.items():
+                grp = f_out.create_group(bin_label)
+                grp.create_dataset('mean', data=stats['mean'])
+                grp.create_dataset('std', data=stats['std'])
+                grp.create_dataset('credible_intervals/1_sigma', data=stats['credible_intervals']['1_sigma'])
+                grp.create_dataset('credible_intervals/2_sigma', data=stats['credible_intervals']['2_sigma'])
+                grp.create_dataset('credible_intervals/3_sigma', data=stats['credible_intervals']['3_sigma'])
+                grp.create_dataset('abs_credible/1_sigma', data=stats['abs_credible']['1_sigma'])
+                grp.create_dataset('abs_credible/2_sigma', data=stats['abs_credible']['2_sigma'])
+                grp.create_dataset('abs_credible/3_sigma', data=stats['abs_credible']['3_sigma'])
+    else:
+        return statistics
