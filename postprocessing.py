@@ -20,11 +20,13 @@ from scipy.interpolate import UnivariateSpline, interp1d
 from scipy.integrate import quad
 from getdist import MCSamples
 from typing import List, Dict, Any, Optional, Callable, Union
+# Get the directory of the current script
+script_dir = os.path.dirname(os.path.abspath(__file__))
 #===================================================================================================
 #Analysis settings
 #===================================================================================================
 #Load the Binning Specs (change it at the .json file if necessary)
-with open('BinningPosterior.json') as json_file:
+with open(os.path.join(script_dir, 'BinningPosterior.json')) as json_file:
     BinningSpecs = json.load(json_file)
 
 #Specs for binning the posterior
