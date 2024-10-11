@@ -55,15 +55,10 @@ priors_dir = os.getenv('PRIORS_DIR')
 
 #number of walkers per free parameter
 nwalkers_per_param = int(os.getenv('NWALKERS_PER_PARAM'))
-
+initialize_walkers = os.getenv('INITIALIZE_WALKERS')
 # Configure logging
-<<<<<<< HEAD
 handle_log = '_'.join([args.handle,prior_name, DATA_file.split('/')[-1].split('.npy')[0]])+'.log'
 handle = '_'.join([args.handle,prior_name, DATA_file.split('/')[-1].split('.npy')[0]])
-=======
-handle_log = '_'.join([prior_name, DATA_file.split('/')[-1].split('.txt')[0]])+'.log'
-handle = '_'.join([prior_name, DATA_file.split('/')[-1].split('.txt')[0]])
->>>>>>> 2ad7030b36b3e673252f063ffe2833e269d02213
 
 logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -151,6 +146,8 @@ PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
 # Initialize the MCMC
 mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle_log)
 mcmc.set_walkers(nwalkers_per_param * mcmc.ndim)
+mcmc.prior_bounds[0][11] = OMEGA_MIN
+mcmc.prior_bounds[1][11] = OMEGA_MAX
 
 in_prior_range = mcmc.in_prior
 
@@ -163,12 +160,10 @@ def logposterior(theta):
     else:
         return PrimordialFeature_likelihood.logGaussian(theta)
 
-print(mcmc.prior_bounds[0][11],mcmc.prior_bounds[1][11])
-sys.exit(-1)
-#theta = ["BNGC", "BSGC", "sigma_nl", "sigma_s",     "a0",  "a1",  "a2", "a3", "a4", "alpha", "A_lin", "omega_lin", "phi"]
-x0 = np.array([3,       3,        5,          5,       0,    0,     0,      0,     0,      1,      0,       500,       0.25])
-delta =np.array([1,       1,         2,         2,    0.1,   0.1,  0.1 ,   0.1,   0.1,    0.1,    0.1,      350,        0.2])
-initial_positions = [mcmc.create_walkers('uniform_thin', delta=delta, x0 = x0) for _ in range(gelman_rubin['N'])]
+omega_ctr = 0.5*(mcmc.prior_bounds[0][11]+mcmc.prior_bounds[1][11])
+omega_delta = 0.4*abs((mcmc.prior_bounds[0][11]-mcmc.prior_bounds[1][11]))
+
+initial_positions = [mcmc.create_walkers(initialize_walkers) for _ in range(gelman_rubin['N'])]
 
 if __name__ == '__main__':
     if MULTIPROCESSING:
