@@ -10,3 +10,5 @@ aux/
 nb/example2_ps_desi.ipynb
 user/
 envs/
+chains_old/
+chains/
