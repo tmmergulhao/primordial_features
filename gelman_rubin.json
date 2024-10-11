@@ -1,7 +1,6 @@
 {
-    "N":4,
+    "N":1,
     "epsilon":10000,
-    "min_length":15000,
-    "convergence_steps":2000,
-    "initial":"uniform_prior"
+    "min_length":2000,
+    "convergence_steps":1000
 }

@@ -45,7 +45,7 @@ class PowerSpectrumConstructor:
         self.model = model
 
         # Constant used to normalize the broadband terms
-        self.P_norm = 1e6
+        self.P_norm = 1e3  # [Mpc/h]^3
 
         # Fiducial parameters TODO: change the way it is given as input
         self.h = 0.676

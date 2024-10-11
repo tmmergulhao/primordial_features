@@ -93,7 +93,7 @@ class MCMC:
         self.logger.info(f'Burn-in fraction set to {self.burnin_frac}')
 
     def create_walkers(self, mode: str, file: bool = False, x0: np.ndarray = None, sigmas: 
-        np.ndarray = None, ranges: np.ndarray = None) -> np.ndarray:
+        np.ndarray = None, delta: np.ndarray = None) -> np.ndarray:
         """
         Create the walkers following three different recipes. Each mode will require a different 
         set of inputs.
@@ -107,7 +107,7 @@ class MCMC:
                 the parameter boundaries defined in the prior file.
                 No additional input is needed.
                 3) 'uniform_thin': Distribute the walkers uniformly within a specified range around 
-                x0. You need to provide x0 and ranges.
+                x0. You need to provide x0 and delta.
 
             file (bool or str, optional): Whether to save the initial positions in a .txt file. If 
             a string is provided, it will be used as the filename prefix. Defaults to False. 
@@ -117,7 +117,7 @@ class MCMC:
 
             sigmas (np.ndarray, optional): Used in the 'gaussian' recipe. Defaults to None.
 
-            ranges (np.ndarray, optional): Used in the 'uniform_thin' recipe. Defaults to None.
+            delta (np.ndarray, optional): Used in the 'uniform_thin' recipe. Defaults to None.
 
         Returns:
             np.ndarray: A 2D array with the initial positions of the walkers.
@@ -137,11 +137,11 @@ class MCMC:
                 pos[:, i] = sigmas[i] * np.random.randn(self.nwalkers) + x0[i]
 
         elif mode == 'uniform_thin':
-            if x0 is None or ranges is None:
-                raise ValueError("x0 and ranges must be provided for 'uniform_thin' mode.")
+            if x0 is None or delta is None:
+                raise ValueError("x0 and delta must be provided for 'uniform_thin' mode.")
             self.logger.info('Using the uniform_thin walker positioning')
-            lower = x0 - ranges
-            upper = x0 + ranges
+            lower = x0 - delta
+            upper = x0 + delta
             for i in range(self.ndim):
                 pos[:, i] = np.random.uniform(lower[i], upper[i], self.nwalkers)
 
@@ -375,8 +375,6 @@ class MCMC:
             handle (str): Handle for the chain files.
             gelman (Dict, optional): Gelman-Rubin diagnostic results. Defaults to None.
         """
-        
-
         if gelman_rubins is not None:
             N_chains = gelman_rubins['N']
             for i in range(N_chains):

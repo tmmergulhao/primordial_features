@@ -17,13 +17,18 @@ from dotenv import load_dotenv
 import data_handling
 import matplotlib.pyplot as plt
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
 parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
+parser.add_argument('--omega_min', type = float, required=True, help = 'Minimum value of omega')
+parser.add_argument('--omega_max', type = float, required=True, help = 'Minimum value of omega')
 parser.add_argument('--mock', type=int, required=False, help='What mock to use')
+parser.add_argument('--handle', type = str, required=False, help = 'add a prefix to the chains and log file')
 args = parser.parse_args()
-
+OMEGA_MIN = float(args.omega_min)
+OMEGA_MAX = float(args.omega_max)
 # Load environment variables from the specified .env file
 load_dotenv(args.env)
 
@@ -52,8 +57,8 @@ priors_dir = os.getenv('PRIORS_DIR')
 nwalkers_per_param = int(os.getenv('NWALKERS_PER_PARAM'))
 
 # Configure logging
-handle_log = '_'.join([prior_name, DATA_file.split('/')[-1].split('.npy')[0]])+'.log'
-handle = '_'.join([prior_name, DATA_file.split('/')[-1].split('.npy')[0]])
+handle_log = '_'.join([args.handle,prior_name, DATA_file.split('/')[-1].split('.npy')[0]])+'.log'
+handle = '_'.join([args.handle,prior_name, DATA_file.split('/')[-1].split('.npy')[0]])
 
 logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -152,7 +157,12 @@ def logposterior(theta):
     else:
         return PrimordialFeature_likelihood.logGaussian(theta)
 
-initial_positions = [mcmc.create_walkers('uniform_prior') for _ in range(gelman_rubin['N'])]
+print(mcmc.prior_bounds[0][11],mcmc.prior_bounds[1][11])
+sys.exit(-1)
+#theta = ["BNGC", "BSGC", "sigma_nl", "sigma_s",     "a0",  "a1",  "a2", "a3", "a4", "alpha", "A_lin", "omega_lin", "phi"]
+x0 = np.array([3,       3,        5,          5,       0,    0,     0,      0,     0,      1,      0,       500,       0.25])
+delta =np.array([1,       1,         2,         2,    0.1,   0.1,  0.1 ,   0.1,   0.1,    0.1,    0.1,      350,        0.2])
+initial_positions = [mcmc.create_walkers('uniform_thin', delta=delta, x0 = x0) for _ in range(gelman_rubin['N'])]
 
 if __name__ == '__main__':
     if MULTIPROCESSING:
