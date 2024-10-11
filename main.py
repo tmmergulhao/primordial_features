@@ -52,8 +52,8 @@ priors_dir = os.getenv('PRIORS_DIR')
 nwalkers_per_param = int(os.getenv('NWALKERS_PER_PARAM'))
 
 # Configure logging
-handle_log = '_'.join([prior_name, DATA_file.split('/')[-1].split('.npy')[0]])+'.log'
-handle = '_'.join([prior_name, DATA_file.split('/')[-1].split('.npy')[0]])
+handle_log = '_'.join([prior_name, DATA_file.split('/')[-1].split('.txt')[0]])+'.log'
+handle = '_'.join([prior_name, DATA_file.split('/')[-1].split('.txt')[0]])
 
 logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -124,13 +124,14 @@ else: #Convolve the theory with the window function
     ps_model_SGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_SGC[0],wfunc_SGC[1],ext=3))
     theory_SGC = lambda x: ps_model_SGC.Evaluate_wincov(x)
 
-#theta = ["BNGC", "BSGC", "sigma_nl", "sigma_s", "a0", "a1", "a2", "a3", "a4", "alpha", "A_lin", "omega_lin", "phi"]
-#Create the theory for the whole data space
-def theory(theta):
-    theta_NGC = [theta[0],theta[2],theta[3],theta[4],theta[5],theta[6],theta[7],theta[8],theta[9],theta[10],theta[11],theta[12]]
-    theta_SGC = [theta[1],theta[2],theta[3],theta[4],theta[5],theta[6],theta[7],theta[8],theta[9],theta[10],theta[11],theta[12]]
-    return np.hstack((theory_NGC(theta_NGC),theory_SGC(theta_SGC)))
 
+def theory(theta):
+    # Slice theta to get the corresponding values for NGC and SGC
+    theta_NGC = theta[[0] + list(range(2, 13))]
+    theta_SGC = theta[[1] + list(range(2, 13))]
+    
+    # Use np.concatenate to combine the results from both theories
+    return np.concatenate((theory_NGC(theta_NGC), theory_SGC(theta_SGC)))
 #***************************************************************************************************
 invcov = np.linalg.inv(covariance)
 
