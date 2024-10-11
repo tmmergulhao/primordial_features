@@ -119,7 +119,6 @@ compression="gzip", compression_opts=9):
             f.create_dataset('logprob', data=final_logprob, compression=compression, 
             compression_opts=compression_opts)
 
-
 def load_chain(file_path: str) -> np.ndarray:
     """Load the MCMC chain from an HDF5 file."""
     try:
@@ -229,7 +228,7 @@ def compute_abs_credible(samples):
     
     return a_star_1sigma, a_star_2sigma, a_star_3sigma
 
-def compute_and_save_statistics(file_input: str, file_output: str = None):
+def compute_statistics(file_input: str, file_output: str = None):
     """
     Compute statistics from the binned MCMC samples and save them to an HDF5 file or return them.
 
@@ -282,3 +281,18 @@ def compute_and_save_statistics(file_input: str, file_output: str = None):
                 grp.create_dataset('abs_credible/3_sigma', data=stats['abs_credible']['3_sigma'])
     else:
         return statistics
+
+    
+if __name__ == '__main__':
+    n = 1
+    burn_in = 0.2
+    for i in range(1,10):
+        f_in = "/home/tmergulhao/primordial_features/chains/lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.txt_".format(i)
+        f_out = "/home/tmergulhao/primordial_features/chains/lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
+        get_total_chain(f_in,f_out,n,burnin_frac=burn_in, thin = 5)
+        f_in = f_out
+        f_out = "/home/tmergulhao/primordial_features/chains/binned_lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
+        BinnedChain([f_in],[[100,900]],f_out,binning_id = 11, freq_bin=10)
+        f_in = f_out
+        f_out = "/home/tmergulhao/primordial_features/chains/stats_lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
+        compute_and_save_statistics(f_in,f_out)
