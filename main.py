@@ -163,7 +163,22 @@ def logposterior(theta):
 omega_ctr = 0.5*(mcmc.prior_bounds[0][11]+mcmc.prior_bounds[1][11])
 omega_delta = 0.4*abs((mcmc.prior_bounds[0][11]-mcmc.prior_bounds[1][11]))
 
-initial_positions = [mcmc.create_walkers(initialize_walkers) for _ in range(gelman_rubin['N'])]
+#Load the initial positions and the step sizes to create the walkers
+X0_str    = os.getenv('X0')
+DELTA_str    = os.getenv('DELTA')
+
+if X0_str:
+    X0 = np.array([float(x) for x in X0_str.split(',')])
+    DELTA = np.array([float(x) for x in DELTA_str.split(',')])
+    X0[11] = omega_ctr
+    DELTA[11] = omega_delta
+else:
+    X0 = np.array([])  # or handle the case where X0 is not set
+    DELTA = np.array([])
+    logger.warning('X0 and SIGMA not set')
+
+#Create the initial positions
+initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA) for _ in range(gelman_rubin['N'])]
 
 if __name__ == '__main__':
     if MULTIPROCESSING:
