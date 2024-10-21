@@ -3,8 +3,6 @@ import numpy as np
 import ps_constructor
 import likelihood
 import mcmc_toolkit
-import pypower
-import time
 import os
 import argparse
 import logging
@@ -17,22 +15,24 @@ from dotenv import load_dotenv
 import data_handling
 import matplotlib.pyplot as plt
 import os
-os.environ["OMP_NUM_THREADS"] = "1"
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
 parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
-parser.add_argument('--omega_min', type = float, required=True, help = 'Minimum value of omega')
-parser.add_argument('--omega_max', type = float, required=True, help = 'Minimum value of omega')
+parser.add_argument('--omega_min', type=float, required=True, help='Minimum value of omega')
+parser.add_argument('--omega_max', type=float, required=True, help='Maximum value of omega')
 parser.add_argument('--mock', type=int, required=False, help='What mock to use')
-parser.add_argument('--handle', type = str, required=False, help = 'add a prefix to the chains and log file')
+parser.add_argument('--handle', type=str, required=False, help='Add a prefix to the chains and log file')
 args = parser.parse_args()
+
+#The frequency range to be scanned
 OMEGA_MIN = float(args.omega_min)
 OMEGA_MAX = float(args.omega_max)
+
 # Load environment variables from the specified .env file
 load_dotenv(args.env)
 
-#Wheter or not to use multiprocessing
+# Whether or not to use multiprocessing
 MULTIPROCESSING = os.getenv('MULTIPROCESSING')
 PROCESSES = int(os.getenv('PROCESSES'))
 
@@ -43,22 +43,29 @@ COV_file = os.getenv('COV')
 fn_wf_ngc = os.getenv('FN_WF_NGC')
 fn_wf_sgc = os.getenv('FN_WF_SGC')
 
-# linear matter power spectrum (smooth and wiggly part)
+# Linear matter power spectrum (smooth and wiggly part)
 PLIN = os.getenv('PLIN')
 
-#Specify the primordial feature model
+# Specify the primordial feature model
 primordialfeature_model = os.getenv('MODEL')
 
-#Get the prior
+# Get the prior
 prior_name = os.getenv('PRIOR_NAME')
 priors_dir = os.getenv('PRIORS_DIR')
 
-#number of walkers per free parameter
+# Number of walkers per free parameter
 nwalkers_per_param = int(os.getenv('NWALKERS_PER_PARAM'))
 initialize_walkers = os.getenv('INITIALIZE_WALKERS')
+
 # Configure logging
-handle_log = '_'.join([args.handle,prior_name, DATA_file.split('/')[-1].split('.npy')[0]])+'.log'
-handle = '_'.join([args.handle,prior_name, DATA_file.split('/')[-1].split('.npy')[0]])
+if args.handle:
+    # If handle is provided, use it in the log file name
+    handle_log = f"{args.handle}_{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{DATA_file.split('/')[-1].split('.txt')[0]}.log"
+    handle = f"{args.handle}_{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{DATA_file.split('/')[-1].split('.txt')[0]}"
+else:
+    # If handle is not provided, use only the prior name
+    handle_log = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{DATA_file.split('/')[-1].split('.txt')[0]}.log"
+    handle = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{DATA_file.split('/')[-1].split('.txt')[0]}"
 
 logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -69,6 +76,7 @@ with open('gelman_rubin.json', 'r') as json_file:
             gelman_rubin = json.load(json_file)
 
 # Log the variables
+logger.info(f'Processes: {PROCESSES}')
 logger.info(f'DATA file: {DATA_file}')
 logger.info(f'COV file: {COV_file}')
 logger.info(f'Window function (NGC): {fn_wf_ngc}')
@@ -79,9 +87,6 @@ logger.info(f'prior_name: {prior_name}')
 logger.info(f'nwalkers_per_param: {nwalkers_per_param}')
 logger.info(f'priors_dir: {priors_dir}')
 logger.info(f'MULTIPROCESSING: {MULTIPROCESSING}')
-
-if MULTIPROCESSING:
-    logger.info(f'Processes: {PROCESSES}')
 
 if fn_wf_ngc is not None:
     wfunc_NGC = data_handling.load_winfunc(fn_wf_ngc)
@@ -153,6 +158,9 @@ in_prior_range = mcmc.in_prior
 
 # Log the Gelman-Rubin convergence criteria
 logger.info(f'Gelman-Rubin convergence criteria: {gelman_rubin}')
+logger.info(f'Parameters: {mcmc.labels}')
+logger.info(f'Range: {mcmc.prior_bounds}')
+logger.info(f'MULTIPROCESSING: {MULTIPROCESSING}')
 
 def logposterior(theta):
     if not in_prior_range(theta):
@@ -176,6 +184,15 @@ else:
     X0 = np.array([])  # or handle the case where X0 is not set
     DELTA = np.array([])
     logger.warning('X0 and SIGMA not set')
+
+#Re-define the chains and figures directory
+CHAIN_DIR = os.getenv('CHAIN_DIR')
+if CHAIN_DIR:
+     mcmc.change_chain_dir(CHAIN_DIR) 
+
+FIG_DIR = os.getenv('FIG_DIR')
+if FIG_DIR:
+    mcmc.change_fig_dir(FIG_DIR)
 
 #Create the initial positions
 initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA) for _ in range(gelman_rubin['N'])]

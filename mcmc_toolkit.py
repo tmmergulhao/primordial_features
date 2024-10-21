@@ -59,6 +59,7 @@ class MCMC:
             self.prior_bounds[0, index], self.prior_bounds[1, index] = dic[key]
         
         self.chain_dir = os.getcwd()+'/chains'
+        self.fig_dir = os.getcwd()+'/figures'
 
     def change_chain_dir(self,new_dir):
         self.chain_dir = new_dir
@@ -243,11 +244,10 @@ class MCMC:
 
         if save:
             fig.tight_layout()
-            figures_dir = os.path.join(os.getcwd(), 'figures')
-            try_mkdir('figures')
-            plt.savefig(os.path.join(figures_dir, f'{handle}_walkers.pdf'))
+
+            plt.savefig(os.path.join(self.fig_dir, f'{handle}_walkers.pdf'))
             plt.close('all')
-            self.logger.info(f'Walkers plot saved to {figures_dir}/{handle}_walkers.pdf')
+            self.logger.info(f'Walkers plot saved to {self.fig_dir}/{handle}_walkers.pdf')
         else:
             plt.show()
 
@@ -298,12 +298,10 @@ class MCMC:
         g1.settings.title_limit = True
         g1.plots_1d(samples)
 
-        figures_dir = os.path.join(os.getcwd(), 'figures')
-        try_mkdir('figures')
         if save:
-            g1.export(os.path.join(figures_dir, f'{handle}_1D_ALL.png'))
+            g1.export(os.path.join(self.fig_dir, f'{handle}_1D_ALL.png'))
             plt.close('all')
-            self.logger.info(f'1D plot saved to {figures_dir}/{handle}_1D_ALL.png')
+            self.logger.info(f'1D plot saved to {self.fig_dir}/{handle}_1D_ALL.png')
         else:
             plt.show()
 
@@ -361,11 +359,10 @@ class MCMC:
         g1.triangle_plot(samples)
 
         if save is not None:
-            figures_dir = os.path.join(os.getcwd(), 'figures')
-            try_mkdir('figures')
-            plt.savefig(os.path.join(figures_dir, f'{save}.png'))
+
+            plt.savefig(os.path.join(self.fig_dir, f'{save}.png'))
             plt.close('all')
-            self.logger.info(f'Corner plot saved to {figures_dir}/{save}.png')
+            self.logger.info(f'Corner plot saved to {self.fig_dir}/{save}.png')
 
     def plot_CorrMatrix(self, handle: str, gelman_rubins: Optional[Dict] = None) -> None:
         """
@@ -412,11 +409,9 @@ class MCMC:
         ax1.grid(linewidth=10, color='white')
         fig.colorbar(im)
 
-        figures_dir = os.path.join(os.getcwd(), 'figures')
-        try_mkdir('figures')
-        plt.savefig(os.path.join(figures_dir, f'{handle}_Corr.png'))
+        plt.savefig(os.path.join(self.fig_dir, f'{handle}_Corr.png'))
         plt.close('all')
-        self.logger.info(f'Correlation matrix plot saved to {figures_dir}/{handle}_Corr.png')
+        self.logger.info(f'Correlation matrix plot saved to {self.fig_dir}/{handle}_Corr.png')
 
     def in_prior(self, x: np.ndarray, params: Optional[List[str]] = None) -> bool:
         """
@@ -470,8 +465,6 @@ class MCMC:
             gelman_rubins (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
             criteria. Defaults to None.
         """
-        try_mkdir('chains')
-        
 
         autocorr = []
         acceptance = []
