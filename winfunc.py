@@ -162,7 +162,15 @@ def Compute(plot: bool = False):
     mu_centers = 0.5 * (mu_bins[1:] + mu_bins[:-1])
 
     cat = np.load(randoms)
-    X, Y, Z, FKP = cat.T
+    if cat.shape[0] == 4:
+        cat = cat.T
+
+    # Extract X, Y, Z, FKP
+    X = cat[:, 0]
+    Y = cat[:, 1]
+    Z = cat[:, 2]
+    FKP = cat[:, 3]
+
     logger.info(f'Number of objects: {cat.shape[0]}')
 
     logger.info('Computing the low-s range...')

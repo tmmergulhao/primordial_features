@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 import data_handling
 import matplotlib.pyplot as plt
 import os
-
+#########################################LOADING THE DATA###########################################
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
 parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
@@ -25,7 +25,7 @@ parser.add_argument('--mock', type=int, required=False, help='What mock to use')
 parser.add_argument('--handle', type=str, required=False, help='Add a prefix to the chains and log file')
 args = parser.parse_args()
 
-#The frequency range to be scanned
+# The frequency range to be scanned
 OMEGA_MIN = float(args.omega_min)
 OMEGA_MAX = float(args.omega_max)
 
@@ -57,23 +57,50 @@ priors_dir = os.getenv('PRIORS_DIR')
 nwalkers_per_param = int(os.getenv('NWALKERS_PER_PARAM'))
 initialize_walkers = os.getenv('INITIALIZE_WALKERS')
 
-# Configure logging
-if args.handle:
-    # If handle is provided, use it in the log file name
-    handle_log = f"{args.handle}_{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{DATA_file.split('/')[-1].split('.txt')[0]}.log"
-    handle = f"{args.handle}_{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{DATA_file.split('/')[-1].split('.txt')[0]}"
-else:
-    # If handle is not provided, use only the prior name
-    handle_log = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{DATA_file.split('/')[-1].split('.txt')[0]}.log"
-    handle = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{DATA_file.split('/')[-1].split('.txt')[0]}"
+#Get the mask for the k-range
+KMIN = float(os.getenv('KMIN')) if os.getenv('KMIN') is not None else None
+KMAX = float(os.getenv('KMAX')) if os.getenv('KMAX') is not None else None
 
-logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-logger = logging.getLogger(__name__)
-
-#Load the gelman rubin convergence criteria
+#########################################PREPARING THE DATA#########################################
+# Load the gelman rubin convergence criteria
 with open('gelman_rubin.json', 'r') as json_file:
             gelman_rubin = json.load(json_file)
+
+# Load the window functions
+if fn_wf_ngc is not None:
+    wfunc_NGC = data_handling.load_winfunc(fn_wf_ngc)
+    #Make sure the window function is normalised
+    wfunc_NGC[1] = wfunc_NGC[1]/wfunc_NGC[1][0]
+
+if fn_wf_sgc is not None:
+    wfunc_SGC = data_handling.load_winfunc(fn_wf_sgc)
+    #Make sure the window function is normalised
+    wfunc_SGC[1] = wfunc_SGC[1]/wfunc_SGC[1][0]
+    
+# Load the k-array and apply the mask
+k    = data_handling.load_data_k(k_file)
+mask = data_handling.compute_mask(k, KMIN, KMAX)
+
+# Load the filtered data and covariance
+DATA = data_handling.load_data(DATA_file, mask)
+covariance = data_handling.load_cov(COV_file, mask)
+k = k[mask]
+invcov = np.linalg.inv(covariance)
+
+# Create the name of the data file
+data_file_name = DATA_file.split('/')[-1].replace('.txt', '')
+common_name = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_kmin_{k[0]:.5f}_kmax_{k[-1]:.5f}_{data_file_name}"
+
+if args.handle:
+    handle_log = f"{args.handle}_{common_name}.log"
+    handle = f"{args.handle}_{common_name}"
+else:
+    handle_log = f"{common_name}.log"
+    handle = common_name
+
+# Create the log file
+logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Log the variables
 logger.info(f'Processes: {PROCESSES}')
@@ -87,22 +114,11 @@ logger.info(f'prior_name: {prior_name}')
 logger.info(f'nwalkers_per_param: {nwalkers_per_param}')
 logger.info(f'priors_dir: {priors_dir}')
 logger.info(f'MULTIPROCESSING: {MULTIPROCESSING}')
-
-if fn_wf_ngc is not None:
-    wfunc_NGC = data_handling.load_winfunc(fn_wf_ngc)
-    #Make sure the window function is normalised
-    wfunc_NGC[1] = wfunc_NGC[1]/wfunc_NGC[1][0]
-
-if fn_wf_sgc is not None:
-    wfunc_SGC = data_handling.load_winfunc(fn_wf_sgc)
-    #Make sure the window function is normalised
-    wfunc_SGC[1] = wfunc_SGC[1]/wfunc_SGC[1][0]
-    
-#Load the data
-DATA = data_handling.load_data(DATA_file)
-covariance = data_handling.load_cov(COV_file)
-k = data_handling.load_data_k(k_file)
-
+logger.info(f'KMIN: {KMIN}')
+logger.info(f'KMAX: {KMAX}')
+logger.info(f'OMEGA_MIN: {OMEGA_MIN}')
+logger.info(f'OMEGA_MAX: {OMEGA_MAX}')
+logger.info(f'Filename: {common_name}')
 #********************** Defining the theory ********************************************************
 # The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
 # of NGC and SGC are different, they will have different window functions. It means that we will
@@ -134,7 +150,6 @@ else: #Convolve the theory with the window function
     ps_model_SGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_SGC[0],wfunc_SGC[1],ext=3))
     theory_SGC = lambda x: ps_model_SGC.Evaluate_wincov(x)
 
-
 def theory(theta):
     # Slice theta to get the corresponding values for NGC and SGC
     theta_NGC = theta[[0] + list(range(2, 13))]
@@ -143,8 +158,6 @@ def theory(theta):
     # Use np.concatenate to combine the results from both theories
     return np.concatenate((theory_NGC(theta_NGC), theory_SGC(theta_SGC)))
 #***************************************************************************************************
-invcov = np.linalg.inv(covariance)
-
 #Create the likelihood
 PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
 
@@ -171,7 +184,7 @@ def logposterior(theta):
 omega_ctr = 0.5*(mcmc.prior_bounds[0][11]+mcmc.prior_bounds[1][11])
 omega_delta = 0.4*abs((mcmc.prior_bounds[0][11]-mcmc.prior_bounds[1][11]))
 
-#Load the initial positions and the step sizes to create the walkers
+#Region in parameter to create the walkers ( Uniform[X0 +- DELTA] )
 X0_str    = os.getenv('X0')
 DELTA_str    = os.getenv('DELTA')
 
