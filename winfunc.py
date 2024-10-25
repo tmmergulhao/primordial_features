@@ -8,10 +8,10 @@ import numpy as np
 from Corrfunc.theory import DDsmu
 import sys, os, json
 from scipy.special import eval_legendre
-from tqdm import tqdm
 from dotenv import load_dotenv
 import argparse
 import logging
+from mpi4py import MPI
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
@@ -19,10 +19,16 @@ parser.add_argument('--env', type=str, required=True,
 help='Path to the .env file for the analysis setup')
 args = parser.parse_args()
 
-# Initialise the logger
-logging.basicConfig(level=logging.INFO, 
-format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Initialize the logger only for rank 0
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+
+if rank == 0:
+    logging.basicConfig(level=logging.INFO, 
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+else:
+    logger = None  # Do not initialize logging for other ranks
 
 # Load environment variables from the specified .env file
 load_dotenv(args.env)
@@ -49,15 +55,16 @@ fraction_high = float(os.getenv("fraction_high"))
 ells = [0, 2, 4]
 
 # Log the loaded configuration
-logger.info(f'Nmu_bins = {Nmu_bins}')
-logger.info(f'n_low = {n_low}')
-logger.info(f'n_mid = {n_mid}')
-logger.info(f'n_high = {n_high}')
-logger.info(f's_min = {s_min}')
-logger.info(f's_max = {s_max}')
-logger.info(f'cut1 = {cut1}')
-logger.info(f'cut2 = {cut2}')
-logger.info(f'Randoms catalogue loaded: {randoms}')
+if rank == 0 and logger is not None:
+    logger.info(f'Nmu_bins = {Nmu_bins}')
+    logger.info(f'n_low = {n_low}')
+    logger.info(f'n_mid = {n_mid}')
+    logger.info(f'n_high = {n_high}')
+    logger.info(f's_min = {s_min}')
+    logger.info(f's_max = {s_max}')
+    logger.info(f'cut1 = {cut1}')
+    logger.info(f'cut2 = {cut2}')
+    logger.info(f'Randoms catalogue loaded: {randoms}')
 
 def RR_s(result: np.ndarray, i: int, nmu_bins: int) -> np.ndarray:
     """
@@ -128,7 +135,7 @@ mu_centers: np.ndarray, frac: float, weights: np.ndarray, ells: list = [0, 2, 4]
     s_ctrs = 0.5 * (s_bins[1:] + s_bins[:-1])
     output = 0
 
-    for i in tqdm(range(n)):
+    for i in range(n):
         index1 = np.random.choice(range(npoints), int(npoints * frac), replace=False)
         this_result = DDsmu(1, 20, s_bins, 1, Nmu_bins, 
                             X[index1], Y[index1], Z[index1], weights1=weights[index1],
@@ -171,25 +178,30 @@ def Compute(plot: bool = False):
     Z = cat[:, 2]
     FKP = cat[:, 3]
 
-    logger.info(f'Number of objects: {cat.shape[0]}')
-
-    logger.info('Computing the low-s range...')
+    if rank == 0 and logger is not None:
+        logger.info(f'Number of objects: {cat.shape[0]}')
+        logger.info('Computing the low-s range...')
     Q_ell_low = estimate_win(X, Y, Z, n_low, s_low, mu_centers, fraction_low, FKP)
-    logger.info('Done!')
-
-    logger.info('Computing the mid-s range...')
+    
+    if rank == 0 and logger is not None:
+        logger.info('Done!')
+        logger.info('Computing the mid-s range...')
     Q_ell_mid = estimate_win(X, Y, Z, n_mid, s_mid, mu_centers, fraction_mid, FKP)
     alpha1 = Q_ell_low[-1, 0] / Q_ell_mid[0, 0]
     Q_ell_mid = Q_ell_mid * alpha1
-    logger.info('Done!')
 
-    logger.info('Computing the high-s range...')
+    if rank == 0 and logger is not None:
+        logger.info('Done!')
+        logger.info('Computing the high-s range...')
+
     Q_ell_high = estimate_win(X, Y, Z, n_high, s_high, mu_centers, fraction_high, FKP)
     alpha2 = Q_ell_mid[-1, 0] / Q_ell_high[0, 0]
     Q_ell_high = Q_ell_high * alpha2
-    logger.info('Done!')
 
-    logger.info('Saving the results...')
+    if rank == 0 and logger is not None:
+        logger.info('Done!')
+        logger.info('Saving the results...')
+
     my_result = np.vstack((Q_ell_low, Q_ell_mid[1:], Q_ell_high[1:]))
     s_final = np.hstack((s_low_ctrs, s_mid_ctrs[1:], s_high_ctrs[1:]))
     output = np.column_stack((s_final, my_result))

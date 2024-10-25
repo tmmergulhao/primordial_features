@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 def compute_mask(k, KMIN=None, KMAX=None):
     """Helper function to compute the mask based on KMIN and KMAX.
@@ -84,14 +85,24 @@ def load_cov(filename, mask=None):
 
     return cov
 
-
 def load_winfunc(filename):
     """Function to load the survey window function.
 
     Args:
-        filename (str):A string with the path to the file.
+        filename (str): A string with the path to the file (.txt or .npy).
     
-    Returns (np.array): A np.array with two columns containing the separation the windowfunction
-    in configuration space.
+    Returns:
+        np.array: A numpy array with two columns containing the separation of the window function
+        in configuration space.
     """
-    return np.loadtxt(filename).T[0:2]
+    # Check the file extension
+    _, file_extension = os.path.splitext(filename)
+    
+    if file_extension == ".txt":
+        # Load .txt file using np.loadtxt and return the first two columns
+        return np.loadtxt(filename).T[0:2]
+    elif file_extension == ".npy":
+        # Load .npy file using np.load and return the first two columns
+        return np.load(filename).T[0:2]
+    else:
+        raise ValueError("Unsupported file format. Please provide a .txt or .npy file.")

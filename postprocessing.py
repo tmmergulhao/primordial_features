@@ -282,17 +282,18 @@ def compute_statistics(file_input: str, file_output: str = None):
     else:
         return statistics
 
-    
 if __name__ == '__main__':
-    n = 1
-    burn_in = 0.2
+    directory = "/scratch/dp322/dc-merg1/chains/"
+
+    n = 4
+    burn_in = 0.3
     for i in range(1,10):
-        f_in = "/home/tmergulhao/primordial_features/chains/lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.txt_".format(i)
-        f_out = "/home/tmergulhao/primordial_features/chains/lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
-        get_total_chain(f_in,f_out,n,burnin_frac=burn_in, thin = 5)
+        f_in = directory+"lin_singlepol_omegamin_2900.0_omegamax_4000.0_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001_".format(i)
+        f_out = directory+"lin_singlepol_omegamin_2900.0_omegamax_4000.0_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
+        get_total_chain(f_in,f_out,n,burnin_frac=burn_in, thin = 10)
         f_in = f_out
-        f_out = "/home/tmergulhao/primordial_features/chains/binned_lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
-        BinnedChain([f_in],[[100,900]],f_out,binning_id = 11, freq_bin=10)
+        f_out = directory+"binned_lin_singlepol_omegamin_2900.0_omegamax_4000.0_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
+        BinnedChain([f_in],[[2900.0,4000.0]],f_out,binning_id = 11, freq_bin=10)
         f_in = f_out
-        f_out = "/home/tmergulhao/primordial_features/chains/stats_lin_range1_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
-        compute_and_save_statistics(f_in,f_out)
+        f_out = "/scratch/dp322/dc-merg1/chains/stats_lin_singlepol_omegamin_2900.0_omegamax_4000.0_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
+        compute_statistics(f_in,f_out)

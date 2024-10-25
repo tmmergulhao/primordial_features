@@ -1,5 +1,5 @@
 {
-    "N":2,
+    "N":4,
     "epsilon":0.03,
     "min_length":10000,
     "convergence_steps":3000
