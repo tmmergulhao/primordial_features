@@ -1,6 +1,11 @@
 import numpy as np
 import os
 
+def load_datafile(filename, start_line=25):
+    # Use genfromtxt to read from the file, skipping the first 24 lines (0-indexed, so start_line-1)
+    _,_,k,p0,_,_ = np.genfromtxt(filename, dtype=complex, skip_header=start_line-1).T
+    return k.real, p0.real
+
 def compute_mask(k, KMIN=None, KMAX=None):
     """Helper function to compute the mask based on KMIN and KMAX.
 
@@ -32,7 +37,7 @@ def load_data_k(filename, mask=None):
     Returns:
         k (np.array): The array containing the k-centers associated with the data.
     """
-    k = np.loadtxt(filename)
+    k, p0 = load_datafile(filename)
     if mask is not None:
         return k[mask]
     return k
@@ -48,15 +53,8 @@ def load_data(filename, mask=None):
         data (np.array): A 1D array containing the filtered data. It should have 
         twice the length of k-array, as NGC and SGC are stacked.
     """
-    data = np.loadtxt(filename)
-    N = len(data) // 2  # Assume NGC and SGC have equal lengths, so data is twice as long
-
-    if mask is not None:
-        mask_ngc = mask[:N]
-        mask_sgc = mask[:N]  # Use the same mask for SGC assuming symmetry
-        return np.hstack((data[:N][mask_ngc], data[N:][mask_sgc]))
-
-    return data
+    k,pk = load_datafile(filename)
+    return pk[mask]
 
 def load_cov(filename, mask=None):
     """Function to load the data covariance with dimensions 2*len(data) X 2*len(data) (the factor

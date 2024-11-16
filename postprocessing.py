@@ -156,15 +156,16 @@ def BinnedChain(handle_list: List[str], binning_limits: List[Union[float, float]
             binning_edges  = np.arange(binning_min, binning_max + freq_bin, freq_bin)
 
             #generate the keys to save the binned posterior
-            keys = lambda i: f'[{binning_edges[i-1]},{binning_edges[i]}]'
+            keys = lambda i: f'[{int(binning_edges[i-1])},{int(binning_edges[i])}]'
             binned_posterior.update({keys(i):[]for i in range(1,len(binning_edges))})
-            
+
             #load the chain
             chain = load_chain(chain_file)
             binning_samples = chain[binning_id]
             mapping = np.digitize(binning_samples,binning_edges)
             for sample_i,bin_it_belongs in tqdm(enumerate(mapping)):
-                binned_posterior[keys(bin_it_belongs)].append(chain.T[sample_i])
+                if 1 <= bin_it_belongs < len(binning_edges):  # Adjust to within expected range
+                    binned_posterior[keys(bin_it_belongs)].append(chain.T[sample_i])
         # Save the binned posterior to the HDF5 file
         for bin_label, samples in binned_posterior.items():
             out_f.create_dataset(bin_label, data=np.array(samples),
@@ -181,6 +182,7 @@ def compute_credible_intervals(samples):
         tuple: Three arrays representing the 1σ, 2σ, and 3σ credible intervals.
     """
     sorted_samples = np.sort(samples)
+    print(samples.shape)
     one_sigma = np.percentile(sorted_samples, [15.865, 84.135], axis=1)
     two_sigma = np.percentile(sorted_samples, [2.275, 97.725], axis=1)
     three_sigma = np.percentile(sorted_samples, [0.135, 99.865], axis=1)
@@ -283,17 +285,17 @@ def compute_statistics(file_input: str, file_output: str = None):
         return statistics
 
 if __name__ == '__main__':
-    directory = "/scratch/dp322/dc-merg1/chains/"
+    directory = "/scratch/dp322/dc-merg1/chains/DESI_QSO_MOCK_Abacus/"
 
     n = 4
-    burn_in = 0.3
+    burn_in = 0.1
     for i in range(1,10):
-        f_in = directory+"lin_singlepol_omegamin_2900.0_omegamax_4000.0_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001_".format(i)
-        f_out = directory+"lin_singlepol_omegamin_2900.0_omegamax_4000.0_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
-        get_total_chain(f_in,f_out,n,burnin_frac=burn_in, thin = 10)
+        f_in = directory+"lin_singlepol_omegamin_2900.0_omegamax_4000.0_kmin_0.00050_kmax_0.29950_desi_survey_catalogs_Y1_mocks_SecondGenMocks_AbacusSummit_v4_2_mock{}_QSO_ffa_concat_clustering.dat_z0.8-2.1_cell6_box9000_weightdefault_FKP_nran6_theta0.05_d0.001_".format(i)
+        f_out = directory+"lin_singlepol_omegamin_2900.0_omegamax_4000.0_kmin_0.00050_kmax_0.29950_desi_survey_catalogs_Y1_mocks_SecondGenMocks_AbacusSummit_v4_2_mock{}_QSO_ffa_concat_clustering.dat_z0.8-2.1_cell6_box9000_weightdefault_FKP_nran6_theta0.05_d0.001.h5".format(i)
+        get_total_chain(f_in,f_out,n,burnin_frac=burn_in, thin = 2)
         f_in = f_out
-        f_out = directory+"binned_lin_singlepol_omegamin_2900.0_omegamax_4000.0_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
-        BinnedChain([f_in],[[2900.0,4000.0]],f_out,binning_id = 11, freq_bin=10)
+        f_out = directory+"binned_lin_singlepol_omegamin_2900.0_omegamax_4000.0_kmin_0.00050_kmax_0.29950_desi_survey_catalogs_Y1_mocks_SecondGenMocks_AbacusSummit_v4_2_mock{}_QSO_ffa_concat_clustering.dat_z0.8-2.1_cell6_box9000_weightdefault_FKP_nran6_theta0.05_d0.001.h5".format(i)
+        BinnedChain([f_in],[[3000,4000]],f_out,binning_id = 11, freq_bin=10)
         f_in = f_out
-        f_out = "/scratch/dp322/dc-merg1/chains/stats_lin_singlepol_omegamin_2900.0_omegamax_4000.0_desi_survey_catalogs_Y1_mocks_SecondGenMocks_EZmock_desipipe_v1_ffa_baseline_2pt_mock{}_pk_pkpoles_QSO_combined_z0.8-2.1_d0.001.h5".format(i)
+        f_out = directory+"stats_lin_singlepol_omegamin_2900.0_omegamax_4000.0_kmin_0.00050_kmax_0.29950_desi_survey_catalogs_Y1_mocks_SecondGenMocks_AbacusSummit_v4_2_mock{}_QSO_ffa_concat_clustering.dat_z0.8-2.1_cell6_box9000_weightdefault_FKP_nran6_theta0.05_d0.001.h5".format(i)
         compute_statistics(f_in,f_out)

@@ -37,8 +37,9 @@ MULTIPROCESSING = os.getenv('MULTIPROCESSING')
 PROCESSES = int(os.getenv('PROCESSES'))
 
 # Load the data products
-k_file = os.getenv('DATA_k')
-DATA_file = os.getenv('DATA').format(args.mock)
+k_file = os.getenv('DATA_k').format(args.mock)
+DATA_NGC_file = os.getenv('DATA_NGC').format(args.mock)
+DATA_SGC_file = os.getenv('DATA_SGC').format(args.mock)
 COV_file = os.getenv('COV')
 fn_wf_ngc = os.getenv('FN_WF_NGC')
 fn_wf_sgc = os.getenv('FN_WF_SGC')
@@ -76,20 +77,24 @@ if fn_wf_sgc is not None:
     wfunc_SGC = data_handling.load_winfunc(fn_wf_sgc)
     #Make sure the window function is normalised
     wfunc_SGC[1] = wfunc_SGC[1]/wfunc_SGC[1][0]
-    
+
 # Load the k-array and apply the mask
 k    = data_handling.load_data_k(k_file)
 mask = data_handling.compute_mask(k, KMIN, KMAX)
 
 # Load the filtered data and covariance
-DATA = data_handling.load_data(DATA_file, mask)
+DATA_NGC = data_handling.load_data(DATA_NGC_file, mask)
+DATA_SGC = data_handling.load_data(DATA_SGC_file, mask)
+DATA = np.concatenate((DATA_NGC, DATA_SGC))
 covariance = data_handling.load_cov(COV_file, mask)
 k = k[mask]
 invcov = np.linalg.inv(covariance)
 
 # Create the name of the data file
-data_file_name = DATA_file.split('/')[-1].replace('.txt', '')
-common_name = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_kmin_{k[0]:.5f}_kmax_{k[-1]:.5f}_{data_file_name}"
+data_file_name = DATA_NGC_file.split('/')[-1].replace('.txt', '')
+common_name = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{data_file_name}"
+common_name = common_name.replace('desipipe_v4_2', "").replace("AbacusSummit", "").replace("z0.8-2.1", "").replace('desi_survey_catalogs_Y1', '').replace('mocks','')  # Remove Abacus and redshift references
+common_name = common_name.replace('SecondGenMocks','').replace('__','').replace('IFFT_recsympk','recsym').replace('altmtl','').replace('NGC','').replace('SGC','')
 
 if args.handle:
     handle_log = f"{args.handle}_{common_name}.log"
@@ -104,7 +109,8 @@ logger = logging.getLogger(__name__)
 
 # Log the variables
 logger.info(f'Processes: {PROCESSES}')
-logger.info(f'DATA file: {DATA_file}')
+logger.info(f'DATA NGC file: {DATA_NGC_file}')
+logger.info(f'DATA SGC file: {DATA_SGC_file}')
 logger.info(f'COV file: {COV_file}')
 logger.info(f'Window function (NGC): {fn_wf_ngc}')
 logger.info(f'Window function (SGC): {fn_wf_sgc}')
@@ -201,10 +207,13 @@ else:
 #Re-define the chains and figures directory
 CHAIN_DIR = os.getenv('CHAIN_DIR')
 if CHAIN_DIR:
-     mcmc.change_chain_dir(CHAIN_DIR) 
-
+    CHAIN_DIR = os.path.join(CHAIN_DIR,prior_name,f"omega_{int(OMEGA_MIN)}_{int(OMEGA_MAX)}")
+    os.makedirs(CHAIN_DIR, exist_ok=True)
+    mcmc.change_chain_dir(CHAIN_DIR) 
 FIG_DIR = os.getenv('FIG_DIR')
 if FIG_DIR:
+    FIG_DIR = os.path.join(FIG_DIR,prior_name,f"omega_{int(OMEGA_MIN)}_{int(OMEGA_MAX)}")
+    os.makedirs(FIG_DIR, exist_ok=True)
     mcmc.change_fig_dir(FIG_DIR)
 
 #Create the initial positions
