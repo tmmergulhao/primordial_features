@@ -124,7 +124,8 @@ def load_chain(file_path: str) -> np.ndarray:
     try:
         with h5.File(file_path, 'r') as file:
             chain = np.array(file.get("chain")).T
-        return chain
+            logprob = np.array(file.get("logprob")).T
+        return chain, logprob
     except Exception as e:
         print(f"Problem loading the file {file_path}: {e}")
         raise
@@ -158,14 +159,17 @@ def BinnedChain(handle_list: List[str], binning_limits: List[Union[float, float]
             #generate the keys to save the binned posterior
             keys = lambda i: f'[{int(binning_edges[i-1])},{int(binning_edges[i])}]'
             binned_posterior.update({keys(i):[]for i in range(1,len(binning_edges))})
+            binned_posterior.update({keys(i)+'_logprob':[]for i in range(1,len(binning_edges))})
 
             #load the chain
-            chain = load_chain(chain_file)
+            chain, logprob = load_chain(chain_file)
             binning_samples = chain[binning_id]
             mapping = np.digitize(binning_samples,binning_edges)
             for sample_i,bin_it_belongs in tqdm(enumerate(mapping)):
                 if 1 <= bin_it_belongs < len(binning_edges):  # Adjust to within expected range
                     binned_posterior[keys(bin_it_belongs)].append(chain.T[sample_i])
+                    binned_posterior[keys(bin_it_belongs)+'_logprob'].append(logprob[sample_i])
+
         # Save the binned posterior to the HDF5 file
         for bin_label, samples in binned_posterior.items():
             out_f.create_dataset(bin_label, data=np.array(samples),
@@ -245,29 +249,30 @@ def compute_statistics(file_input: str, file_output: str = None):
 
     with h5.File(file_input, 'r') as f_in:
         for bin_label in f_in.keys():
-            samples = f_in[bin_label][:].T
-            
-            # Compute statistics
-            one_sigma, two_sigma, three_sigma = compute_credible_intervals(samples)
-            mean = compute_mean(samples)
-            std = compute_std(samples)
-            a_star_1sigma, a_star_2sigma, a_star_3sigma = compute_abs_credible(samples)
-            
-            # Store results in the dictionary
-            statistics[bin_label] = {
-                'mean': mean,
-                'std': std,
-                'credible_intervals': {
-                    '1_sigma': one_sigma,
-                    '2_sigma': two_sigma,
-                    '3_sigma': three_sigma
-                },
-                'abs_credible': {
-                    '1_sigma': a_star_1sigma,
-                    '2_sigma': a_star_2sigma,
-                    '3_sigma': a_star_3sigma
+            if 'logprob' not in bin_label:
+                samples = f_in[bin_label][:].T
+                
+                # Compute statistics
+                one_sigma, two_sigma, three_sigma = compute_credible_intervals(samples)
+                mean = compute_mean(samples)
+                std = compute_std(samples)
+                a_star_1sigma, a_star_2sigma, a_star_3sigma = compute_abs_credible(samples)
+                
+                # Store results in the dictionary
+                statistics[bin_label] = {
+                    'mean': mean,
+                    'std': std,
+                    'credible_intervals': {
+                        '1_sigma': one_sigma,
+                        '2_sigma': two_sigma,
+                        '3_sigma': three_sigma
+                    },
+                    'abs_credible': {
+                        '1_sigma': a_star_1sigma,
+                        '2_sigma': a_star_2sigma,
+                        '3_sigma': a_star_3sigma
+                    }
                 }
-            }
 
     if file_output:
         with h5.File(file_output, 'w') as f_out:
@@ -285,17 +290,17 @@ def compute_statistics(file_input: str, file_output: str = None):
         return statistics
 
 if __name__ == '__main__':
-    directory = "/scratch/dp322/dc-merg1/chains/DESI_QSO_MOCK_Abacus/"
+    directory = "/home/tmergulhao/primordial_features/chains/DESI_LRG1_MOCK_Abacus/lin_singlepol/omega_100_900/"
 
     n = 4
-    burn_in = 0.1
-    for i in range(1,10):
-        f_in = directory+"lin_singlepol_omegamin_2900.0_omegamax_4000.0_kmin_0.00050_kmax_0.29950_desi_survey_catalogs_Y1_mocks_SecondGenMocks_AbacusSummit_v4_2_mock{}_QSO_ffa_concat_clustering.dat_z0.8-2.1_cell6_box9000_weightdefault_FKP_nran6_theta0.05_d0.001_".format(i)
-        f_out = directory+"lin_singlepol_omegamin_2900.0_omegamax_4000.0_kmin_0.00050_kmax_0.29950_desi_survey_catalogs_Y1_mocks_SecondGenMocks_AbacusSummit_v4_2_mock{}_QSO_ffa_concat_clustering.dat_z0.8-2.1_cell6_box9000_weightdefault_FKP_nran6_theta0.05_d0.001.h5".format(i)
+    burn_in = 0.2
+    for i in range(5,6):
+        f_in = directory+"lin_singlepol_omegamin_100.0_omegamax_900.0_2pt_mock{}_recon_sm15_IFFT_recsym_pk_pkpoles_LRG__z0.4-0.6_default_FKP_lin_nran18_cellsize6_boxsize7000_d0.001_".format(i)
+        f_out = directory+"lin_singlepol_omegamin_100.0_omegamax_900.0_2pt_mock{}_recon_sm15_IFFT_recsym_pk_pkpoles_LRG__z0.4-0.6_default_FKP_lin_nran18_cellsize6_boxsize7000_d0.001.h5".format(i)
         get_total_chain(f_in,f_out,n,burnin_frac=burn_in, thin = 2)
         f_in = f_out
-        f_out = directory+"binned_lin_singlepol_omegamin_2900.0_omegamax_4000.0_kmin_0.00050_kmax_0.29950_desi_survey_catalogs_Y1_mocks_SecondGenMocks_AbacusSummit_v4_2_mock{}_QSO_ffa_concat_clustering.dat_z0.8-2.1_cell6_box9000_weightdefault_FKP_nran6_theta0.05_d0.001.h5".format(i)
-        BinnedChain([f_in],[[3000,4000]],f_out,binning_id = 11, freq_bin=10)
+        f_out = directory+"binned_lin_singlepol_omegamin_100.0_omegamax_900.0_2pt_mock{}_recon_sm15_IFFT_recsym_pk_pkpoles_LRG__z0.4-0.6_default_FKP_lin_nran18_cellsize6_boxsize7000_d0.001.h5".format(i)
+        BinnedChain([f_in],[[100,900]],f_out,binning_id = 11, freq_bin=10)
         f_in = f_out
-        f_out = directory+"stats_lin_singlepol_omegamin_2900.0_omegamax_4000.0_kmin_0.00050_kmax_0.29950_desi_survey_catalogs_Y1_mocks_SecondGenMocks_AbacusSummit_v4_2_mock{}_QSO_ffa_concat_clustering.dat_z0.8-2.1_cell6_box9000_weightdefault_FKP_nran6_theta0.05_d0.001.h5".format(i)
+        f_out = directory+"stats_lin_singlepol_omegamin_100.0_omegamax_900.0_2pt_mock{}_recon_sm15_IFFT_recsym_pk_pkpoles_LRG__z0.4-0.6_default_FKP_lin_nran18_cellsize6_boxsize7000_d0.001.h5".format(i)
         compute_statistics(f_in,f_out)

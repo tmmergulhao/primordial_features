@@ -6,8 +6,7 @@ import mcmc_toolkit
 import os
 import argparse
 import logging
-import json
-import sys
+from tqdm import tqdm
 from scipy.interpolate import interp1d
 from scipy.interpolate import InterpolatedUnivariateSpline
 from multiprocessing import Pool
@@ -15,6 +14,8 @@ from dotenv import load_dotenv
 import data_handling
 import matplotlib.pyplot as plt
 import os
+from iminuit import Minuit
+
 #########################################LOADING THE DATA###########################################
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
@@ -31,10 +32,6 @@ OMEGA_MAX = float(args.omega_max)
 
 # Load environment variables from the specified .env file
 load_dotenv(args.env)
-
-# Whether or not to use multiprocessing
-MULTIPROCESSING = os.getenv('MULTIPROCESSING')
-PROCESSES = int(os.getenv('PROCESSES'))
 
 # Load the data products
 k_file = os.getenv('DATA_k').format(args.mock)
@@ -63,10 +60,6 @@ KMIN = float(os.getenv('KMIN')) if os.getenv('KMIN') is not None else None
 KMAX = float(os.getenv('KMAX')) if os.getenv('KMAX') is not None else None
 
 #########################################PREPARING THE DATA#########################################
-# Load the gelman rubin convergence criteria
-with open('gelman_rubin.json', 'r') as json_file:
-            gelman_rubin = json.load(json_file)
-
 # Load the window functions
 if fn_wf_ngc is not None:
     wfunc_NGC = data_handling.load_winfunc(fn_wf_ngc)
@@ -107,7 +100,7 @@ logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctim
 logger = logging.getLogger(__name__)
 
 # Log the variables
-logger.info(f'Processes: {PROCESSES}')
+logger.info(f'******************************************************** CHI2 minimizer ********************************************************')
 logger.info(f'DATA NGC file: {DATA_NGC_file}')
 logger.info(f'DATA SGC file: {DATA_SGC_file}')
 logger.info(f'COV file: {COV_file}')
@@ -116,9 +109,7 @@ logger.info(f'Window function (SGC): {fn_wf_sgc}')
 logger.info(f'linear matter power spectrum: {PLIN}')
 logger.info(f'primordial feature model: {primordialfeature_model}')
 logger.info(f'prior_name: {prior_name}')
-logger.info(f'nwalkers_per_param: {nwalkers_per_param}')
 logger.info(f'priors_dir: {priors_dir}')
-logger.info(f'MULTIPROCESSING: {MULTIPROCESSING}')
 logger.info(f'KMIN: {KMIN}')
 logger.info(f'KMAX: {KMAX}')
 logger.info(f'OMEGA_MIN: {OMEGA_MIN}')
@@ -136,7 +127,6 @@ logger.info(f'Filename: {common_name}')
 #       iii) Compute the theory for NGC and SGC
 #
 #       iv) Concatenate the result from the step above and compare with data.
-
 
 # Initialize the model for NGC
 ps_model_NGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
@@ -166,62 +156,84 @@ def theory(theta):
 #Create the likelihood
 PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
 
+def chi2(theta):
+    return PrimordialFeature_likelihood.chi2(theta)
+
 # Initialize the MCMC
 mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle_log)
-mcmc.set_walkers(nwalkers_per_param * mcmc.ndim)
-mcmc.prior_bounds[0][11] = OMEGA_MIN
-mcmc.prior_bounds[1][11] = OMEGA_MAX
-
-in_prior_range = mcmc.in_prior
-
-# Log the Gelman-Rubin convergence criteria
-logger.info(f'Gelman-Rubin convergence criteria: {gelman_rubin}')
-logger.info(f'Parameters: {mcmc.labels}')
-logger.info(f'Range: {mcmc.prior_bounds}')
-logger.info(f'MULTIPROCESSING: {MULTIPROCESSING}')
-
-def logposterior(theta):
-    if not in_prior_range(theta):
-        return -np.inf
-    else:
-        return PrimordialFeature_likelihood.logGaussian(theta)
-
-omega_ctr = 0.5*(mcmc.prior_bounds[0][11]+mcmc.prior_bounds[1][11])
-omega_delta = 0.4*abs((mcmc.prior_bounds[0][11]-mcmc.prior_bounds[1][11]))
+mcmc.set_walkers(5)
 
 #Region in parameter to create the walkers ( Uniform[X0 +- DELTA] )
 X0_str    = os.getenv('X0')
 DELTA_str    = os.getenv('DELTA')
 
+#Re-define the chains and figures directory
+CHAIN_DIR = os.getenv('CHAIN_DIR')
+if CHAIN_DIR:
+    OUT_DIR = os.path.join(CHAIN_DIR,prior_name,f"omega_{int(OMEGA_MIN)}_{int(OMEGA_MAX)}",'minuit')
+    os.makedirs(OUT_DIR, exist_ok=True)
+
 if X0_str:
     X0 = np.array([float(x) for x in X0_str.split(',')])
     DELTA = np.array([float(x) for x in DELTA_str.split(',')])
-    X0[11] = omega_ctr
-    DELTA[11] = omega_delta
 else:
     X0 = np.array([])  # or handle the case where X0 is not set
     DELTA = np.array([])
     logger.warning('X0 and SIGMA not set')
 
-#Re-define the chains and figures directory
-CHAIN_DIR = os.getenv('CHAIN_DIR')
-if CHAIN_DIR:
-    CHAIN_DIR = os.path.join(CHAIN_DIR,prior_name,f"omega_{int(OMEGA_MIN)}_{int(OMEGA_MAX)}")
-    os.makedirs(CHAIN_DIR, exist_ok=True)
-    mcmc.change_chain_dir(CHAIN_DIR) 
-FIG_DIR = os.getenv('FIG_DIR')
-if FIG_DIR:
-    FIG_DIR = os.path.join(FIG_DIR,prior_name,f"omega_{int(OMEGA_MIN)}_{int(OMEGA_MAX)}")
-    os.makedirs(FIG_DIR, exist_ok=True)
-    mcmc.change_fig_dir(FIG_DIR)
+def analyze_frequency(freq):
+    """
+    Analyze a single frequency and save the results to a separate file.
+    """
+    try:
+        # Define parameter limits
+        limits = [(mcmc.prior_bounds[0][i], mcmc.prior_bounds[1][i]) for i in range(mcmc.ndim)]
+        limits[11] = (freq, freq)
+        
+        # Generate initial positions
+        initial_positions = mcmc.create_walkers(initialize_walkers, x0=X0, delta=DELTA)
+        initial_positions.T[11] = freq
 
-#Create the initial positions
-initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA) for _ in range(gelman_rubin['N'])]
+        best_value = float('inf')
+        best_params = None
+
+        for this_guess in initial_positions:
+            m = Minuit(chi2, this_guess)
+            m.limits = limits
+            m.migrad()
+
+            if m.fval < best_value:
+                best_value = m.fval
+                best_params = m.values.to_dict()
+
+        # Save results to a file
+        result = {'best_value': best_value, 'best_params': best_params}
+        output_filename = os.path.join(OUT_DIR, f"freq_{int(freq)}.npy")
+        np.save(output_filename, result)
+
+        logger.info(f"Frequency: {freq}, Best fval: {best_value}, Best params: {best_params}")
+        logger.info(f"Results saved to {output_filename}")
+        return freq, result
+
+    except Exception as e:
+        logger.error(f"Error analyzing frequency {freq}: {e}")
+        return freq, None
 
 if __name__ == '__main__':
-    if MULTIPROCESSING:
-        # Create a multiprocessing pool
-        with Pool(processes = PROCESSES) as pool:
-            #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
-            mcmc.run(handle, 0, initial_positions, logposterior, pool=pool, 
-            gelman_rubins=gelman_rubin)
+    # Frequency range
+    frequencies = np.arange(OMEGA_MIN + 5, OMEGA_MAX, 5)
+
+    # Create output directory
+    os.makedirs(OUT_DIR, exist_ok=True)
+
+    # Use multiprocessing Pool to process frequencies in parallel
+    with Pool(processes = 4) as pool:
+        results = list(tqdm(pool.imap(analyze_frequency, frequencies), total=len(frequencies)))
+
+    # Optionally combine all results into a single dictionary (if needed)
+    combined_results = {freq: res for freq, res in results if res is not None}
+
+    # Save combined results as a backup
+    combined_output_file = os.path.join(OUT_DIR, "combined_results.npy")
+    np.save(combined_output_file, combined_results)
+    logger.info(f"Combined results saved to {combined_output_file}")

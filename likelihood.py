@@ -36,3 +36,18 @@ class likelihoods:
         assert len(theory_result) == len(self.data), f"Data and theory with different shape: data: {len(self.data)}, theory: {len(theory_result)}"
         diff = theory_result - self.data
         return -0.5 * QuadraticForm(diff, diff, self.invcov)
+    
+    def chi2(self, theta:List[float]) -> float:
+        """
+        Calculate the chi2.
+
+        Parameters:
+        theta (List[float]): The parameter vector.
+
+        Returns:
+        float: The chi2 value.
+        """
+        theory_result = self.theory(theta)
+        assert len(theory_result) == len(self.data), f"Data and theory with different shape: data: {len(self.data)}, theory: {len(theory_result)}"
+        diff = theory_result - self.data
+        return QuadraticForm(diff, diff, self.invcov)
