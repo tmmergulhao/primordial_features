@@ -38,6 +38,7 @@ class MCMC:
         try:
             with open(os.path.join(directory, f'{self.prior_name}.json')) as json_file:
                 dic = json.load(json_file, object_pairs_hook=OrderedDict)
+                self.logger.info(f'Using {self.prior_name} file')
         except FileNotFoundError:
             self.logger.error(f'File {self.prior_name}.json not found in {directory}.')
             sys.exit(-1)
@@ -48,18 +49,39 @@ class MCMC:
             self.logger.error(f'An unexpected error occurred: {e}')
             sys.exit(-1)
 
-        self.prior_dictionary = dic  # Save the prior dictionary
-        self.logger.info(f'Using {self.prior_name} file')
-        self.ndim = len(dic)
+        # Save the input prior
+        self.input_prior = dic  
+
+        # Unpack nested dictionaries
+        self.prior_bounds = OrderedDict()
+        self.prior_expanded = OrderedDict()
+
+        def unpack_nested_dict(data, result):
+            """
+            Recursively unpack nested dictionaries and add lists to the result dictionary in order.
+            """
+            for key, value in data.items():
+                if isinstance(value, dict):
+                    unpack_nested_dict(value, result)  # Recursively process nested dictionaries
+                elif isinstance(value, list):
+                    result[key] = value  # Add lists directly to the result dictionary
+        unpack_nested_dict(self.input_prior, self.prior_expanded)
+        self.ndim = len(self.prior_expanded)
         self.prior_bounds = np.zeros((2, self.ndim))
         self.labels = []
+        self.id_map = {}
 
-        for index, key in enumerate(dic.keys()):
+        for index, key in enumerate(self.prior_expanded.keys()):
             self.labels.append(key)
-            self.prior_bounds[0, index], self.prior_bounds[1, index] = dic[key]
-        
+            self.prior_bounds[0, index], self.prior_bounds[1, index] = self.prior_expanded[key]
+            self.id_map[key] = index
+            
         self.chain_dir = os.getcwd()+'/chains'
         self.fig_dir = os.getcwd()+'/figures'
+        self.logger.info(f'Input dictionary: {self.input_prior}')
+        self.logger.info(f'Expanded dictionary: {self.prior_expanded}')
+        self.logger.info(f'Parameter labels: {self.labels}')
+        self.logger.info(f'Parameter bounds: {self.prior_bounds}')
 
     def change_chain_dir(self,new_dir):
         self.chain_dir = new_dir

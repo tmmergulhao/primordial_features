@@ -280,7 +280,7 @@ class PowerSpectrumConstructor:
             array-like: The evaluated power spectrum with window function convolution.
         """
         # Get the broadband + feature parameters
-        B, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
+        B, a0, a1, a2, a3, a4, alpha, sigma_nl, sigma_s, *deltaP_params = params
         
         # Compute delta_P (primordial feature)
         deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext,deltaP_params)

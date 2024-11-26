@@ -32,6 +32,7 @@ OMEGA_MAX = float(args.omega_max)
 
 # Load environment variables from the specified .env file
 load_dotenv(args.env)
+PROCESSES = int(os.getenv('PROCESSES'))
 
 # Load the data products
 k_file = os.getenv('DATA_k').format(args.mock)
@@ -88,6 +89,7 @@ data_file_name = DATA_NGC_file.split('/')[-1].replace('.txt', '')
 common_name = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{data_file_name}"
 common_name = common_name.replace('desipipe_v4_2', "").replace("AbacusSummit", "").replace("z0.8-2.1", "").replace('desi_survey_catalogs_Y1', '').replace('mocks','')  # Remove Abacus and redshift references
 common_name = common_name.replace('SecondGenMocks','').replace('__','').replace('IFFT_recsympk','recsym').replace('altmtl','').replace('NGC','').replace('SGC','')
+common_name =  'MINUIT_' + common_name
 
 if args.handle:
     handle_log = f"{args.handle}_{common_name}.log"
@@ -95,12 +97,14 @@ if args.handle:
 else:
     handle_log = f"{common_name}.log"
     handle = common_name
+
 # Create the log file
 logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Log the variables
 logger.info(f'******************************************************** CHI2 minimizer ********************************************************')
+logger.info(f'Processes: {PROCESSES}')
 logger.info(f'DATA NGC file: {DATA_NGC_file}')
 logger.info(f'DATA SGC file: {DATA_SGC_file}')
 logger.info(f'COV file: {COV_file}')
@@ -115,6 +119,12 @@ logger.info(f'KMAX: {KMAX}')
 logger.info(f'OMEGA_MIN: {OMEGA_MIN}')
 logger.info(f'OMEGA_MAX: {OMEGA_MAX}')
 logger.info(f'Filename: {common_name}')
+
+# Initialize the MCMC
+mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle_log)
+ndim_NGC = len(mcmc.input_prior['NGC'])
+ndim_SGC = len(mcmc.input_prior['SGC'])
+mcmc.set_walkers(5)
 #********************** Defining the theory ********************************************************
 # The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
 # of NGC and SGC are different, they will have different window functions. It means that we will
@@ -147,8 +157,12 @@ else: #Convolve the theory with the window function
 
 def theory(theta):
     # Slice theta to get the corresponding values for NGC and SGC
-    theta_NGC = theta[[0] + list(range(2, 13))]
-    theta_SGC = theta[[1] + list(range(2, 13))]
+    theta_NGC = theta[0:ndim_NGC]
+    theta_SGC = theta[ndim_NGC:ndim_NGC+ndim_SGC]
+    shared_params = theta[ndim_NGC+ndim_SGC:]
+
+    theta_NGC = theta_NGC + shared_params
+    theta_SGC = theta_SGC + shared_params
     
     # Use np.concatenate to combine the results from both theories
     return np.concatenate((theory_NGC(theta_NGC), theory_SGC(theta_SGC)))
@@ -159,13 +173,9 @@ PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
 def chi2(theta):
     return PrimordialFeature_likelihood.chi2(theta)
 
-# Initialize the MCMC
-mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle_log)
-mcmc.set_walkers(5)
-
 #Region in parameter to create the walkers ( Uniform[X0 +- DELTA] )
-X0_str    = os.getenv('X0')
-DELTA_str    = os.getenv('DELTA')
+X0_str = os.getenv('X0')
+DELTA_str = os.getenv('DELTA')
 
 #Re-define the chains and figures directory
 CHAIN_DIR = os.getenv('CHAIN_DIR')
@@ -214,20 +224,20 @@ def analyze_frequency(freq):
         logger.info(f"Frequency: {freq}, Best fval: {best_value}, Best params: {best_params}")
         logger.info(f"Results saved to {output_filename}")
         return freq, result
-
+    
     except Exception as e:
         logger.error(f"Error analyzing frequency {freq}: {e}")
         return freq, None
 
 if __name__ == '__main__':
     # Frequency range
-    frequencies = np.arange(OMEGA_MIN + 5, OMEGA_MAX, 5)
+    frequencies = np.arange(OMEGA_MIN + 5, OMEGA_MAX, 10)
 
     # Create output directory
     os.makedirs(OUT_DIR, exist_ok=True)
 
     # Use multiprocessing Pool to process frequencies in parallel
-    with Pool(processes = 4) as pool:
+    with Pool(processes = PROCESSES) as pool:
         results = list(tqdm(pool.imap(analyze_frequency, frequencies), total=len(frequencies)))
 
     # Optionally combine all results into a single dictionary (if needed)

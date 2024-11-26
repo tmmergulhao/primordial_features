@@ -19,8 +19,8 @@ import os
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
 parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
-parser.add_argument('--omega_min', type=float, required=True, help='Minimum value of omega')
-parser.add_argument('--omega_max', type=float, required=True, help='Maximum value of omega')
+parser.add_argument('--omega_min', type=float, required=False, help='Minimum value of omega')
+parser.add_argument('--omega_max', type=float, required=False, help='Maximum value of omega')
 parser.add_argument('--mock', type=int, required=False, help='What mock to use')
 parser.add_argument('--handle', type=str, required=False, help='Add a prefix to the chains and log file')
 args = parser.parse_args()
@@ -124,6 +124,11 @@ logger.info(f'KMAX: {KMAX}')
 logger.info(f'OMEGA_MIN: {OMEGA_MIN}')
 logger.info(f'OMEGA_MAX: {OMEGA_MAX}')
 logger.info(f'Filename: {common_name}')
+
+# Initialize the MCMC
+mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle_log)
+ndim_NGC = len(mcmc.input_prior['NGC'])
+ndim_SGC = len(mcmc.input_prior['SGC'])
 #********************** Defining the theory ********************************************************
 # The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
 # of NGC and SGC are different, they will have different window functions. It means that we will
@@ -157,8 +162,12 @@ else: #Convolve the theory with the window function
 
 def theory(theta):
     # Slice theta to get the corresponding values for NGC and SGC
-    theta_NGC = theta[[0] + list(range(2, 13))]
-    theta_SGC = theta[[1] + list(range(2, 13))]
+    theta_NGC = theta[0:ndim_NGC]
+    theta_SGC = theta[ndim_NGC:ndim_NGC+ndim_SGC]
+    shared_params = theta[ndim_NGC+ndim_SGC:]
+
+    theta_NGC = theta_NGC + shared_params
+    theta_SGC = theta_SGC + shared_params
     
     # Use np.concatenate to combine the results from both theories
     return np.concatenate((theory_NGC(theta_NGC), theory_SGC(theta_SGC)))
@@ -167,7 +176,6 @@ def theory(theta):
 PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
 
 # Initialize the MCMC
-mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle_log)
 mcmc.set_walkers(nwalkers_per_param * mcmc.ndim)
 mcmc.prior_bounds[0][11] = OMEGA_MIN
 mcmc.prior_bounds[1][11] = OMEGA_MAX
@@ -176,8 +184,6 @@ in_prior_range = mcmc.in_prior
 
 # Log the Gelman-Rubin convergence criteria
 logger.info(f'Gelman-Rubin convergence criteria: {gelman_rubin}')
-logger.info(f'Parameters: {mcmc.labels}')
-logger.info(f'Range: {mcmc.prior_bounds}')
 logger.info(f'MULTIPROCESSING: {MULTIPROCESSING}')
 
 def logposterior(theta):
@@ -186,7 +192,9 @@ def logposterior(theta):
     else:
         return PrimordialFeature_likelihood.logGaussian(theta)
 
-omega_ctr = 0.5*(mcmc.prior_bounds[0][11]+mcmc.prior_bounds[1][11])
+print(mcmc.id_map)
+sys.exit(-1)
+omega_ctr = 0.5*(mcmc.prior_bounds[0][mcmc.id_map['omega']]+mcmc.prior_bounds[1][mcmc.id_map['omega']])
 omega_delta = 0.4*abs((mcmc.prior_bounds[0][11]-mcmc.prior_bounds[1][11]))
 
 #Region in parameter to create the walkers ( Uniform[X0 +- DELTA] )
