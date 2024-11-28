@@ -20,15 +20,9 @@ from iminuit import Minuit
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
 parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
-parser.add_argument('--omega_min', type=float, required=True, help='Minimum value of omega')
-parser.add_argument('--omega_max', type=float, required=True, help='Maximum value of omega')
 parser.add_argument('--mock', type=int, required=False, help='What mock to use')
 parser.add_argument('--handle', type=str, required=False, help='Add a prefix to the chains and log file')
 args = parser.parse_args()
-
-# The frequency range to be scanned
-OMEGA_MIN = float(args.omega_min)
-OMEGA_MAX = float(args.omega_max)
 
 # Load environment variables from the specified .env file
 load_dotenv(args.env)
@@ -45,16 +39,12 @@ fn_wf_sgc = os.getenv('FN_WF_SGC')
 # Linear matter power spectrum (smooth and wiggly part)
 PLIN = os.getenv('PLIN')
 
-# Specify the primordial feature model
-primordialfeature_model = os.getenv('MODEL')
-
 # Get the prior
 prior_name = os.getenv('PRIOR_NAME')
 priors_dir = os.getenv('PRIORS_DIR')
 
 # Number of walkers per free parameter
-nwalkers_per_param = int(os.getenv('NWALKERS_PER_PARAM'))
-initialize_walkers = os.getenv('INITIALIZE_WALKERS')
+Nguess = int(os.getenv('Nguess'))
 
 #Get the mask for the k-range
 KMIN = float(os.getenv('KMIN')) if os.getenv('KMIN') is not None else None
@@ -86,7 +76,7 @@ invcov = np.linalg.inv(covariance)
 
 # Create the name of the data file
 data_file_name = DATA_NGC_file.split('/')[-1].replace('.txt', '')
-common_name = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{data_file_name}"
+common_name = f"{prior_name}_{data_file_name}"
 common_name = common_name.replace('desipipe_v4_2', "").replace("AbacusSummit", "").replace("z0.8-2.1", "").replace('desi_survey_catalogs_Y1', '').replace('mocks','')  # Remove Abacus and redshift references
 common_name = common_name.replace('SecondGenMocks','').replace('__','').replace('IFFT_recsympk','recsym').replace('altmtl','').replace('NGC','').replace('SGC','')
 common_name =  'MINUIT_' + common_name
@@ -111,20 +101,17 @@ logger.info(f'COV file: {COV_file}')
 logger.info(f'Window function (NGC): {fn_wf_ngc}')
 logger.info(f'Window function (SGC): {fn_wf_sgc}')
 logger.info(f'linear matter power spectrum: {PLIN}')
-logger.info(f'primordial feature model: {primordialfeature_model}')
 logger.info(f'prior_name: {prior_name}')
 logger.info(f'priors_dir: {priors_dir}')
 logger.info(f'KMIN: {KMIN}')
 logger.info(f'KMAX: {KMAX}')
-logger.info(f'OMEGA_MIN: {OMEGA_MIN}')
-logger.info(f'OMEGA_MAX: {OMEGA_MAX}')
 logger.info(f'Filename: {common_name}')
 
 # Initialize the MCMC
 mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle_log)
 ndim_NGC = len(mcmc.input_prior['NGC'])
 ndim_SGC = len(mcmc.input_prior['SGC'])
-mcmc.set_walkers(5)
+mcmc.set_walkers(Nguess)
 #********************** Defining the theory ********************************************************
 # The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
 # of NGC and SGC are different, they will have different window functions. It means that we will
@@ -139,10 +126,10 @@ mcmc.set_walkers(5)
 #       iv) Concatenate the result from the step above and compare with data.
 
 # Initialize the model for NGC
-ps_model_NGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
+ps_model_NGC = ps_constructor.PowerSpectrumConstructor(PLIN, 'None', k)
 
 # Initialize the model for SGC
-ps_model_SGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
+ps_model_SGC = ps_constructor.PowerSpectrumConstructor(PLIN, "None", k)
 
 if (fn_wf_ngc is None) or (fn_wf_sgc is None): #No window function convolution
     theory_NGC = lambda x: ps_model_NGC.Evaluate_bare(x)
@@ -180,58 +167,19 @@ DELTA_str = os.getenv('DELTA')
 #Re-define the chains and figures directory
 CHAIN_DIR = os.getenv('CHAIN_DIR')
 if CHAIN_DIR:
-    OUT_DIR = os.path.join(CHAIN_DIR,prior_name,f"omega_{int(OMEGA_MIN)}_{int(OMEGA_MAX)}",'minuit')
+    OUT_DIR = os.path.join(CHAIN_DIR,prior_name,"BAO")
     os.makedirs(OUT_DIR, exist_ok=True)
 
 if X0_str:
     X0 = np.array([float(x) for x in X0_str.split(',')])
     DELTA = np.array([float(x) for x in DELTA_str.split(',')])
+    
 else:
     X0 = np.array([])  # or handle the case where X0 is not set
     DELTA = np.array([])
     logger.warning('X0 and SIGMA not set')
 
-def analyze_frequency(freq):
-    """
-    Analyze a single frequency and save the results to a separate file.
-    """
-    try:
-        # Define parameter limits
-        limits = [(mcmc.prior_bounds[0][i], mcmc.prior_bounds[1][i]) for i in range(mcmc.ndim)]
-        limits[11] = (freq, freq)
-        
-        # Generate initial positions
-        initial_positions = mcmc.create_walkers(initialize_walkers, x0=X0, delta=DELTA)
-        initial_positions.T[11] = freq
-
-        best_value = float('inf')
-        best_params = None
-
-        for this_guess in initial_positions:
-            m = Minuit(chi2, this_guess)
-            m.limits = limits
-            m.migrad()
-
-            if m.fval < best_value:
-                best_value = m.fval
-                best_params = m.values.to_dict()
-
-        # Save results to a file
-        result = {'best_value': best_value, 'best_params': best_params}
-        output_filename = os.path.join(OUT_DIR, f"freq_{int(freq)}.npy")
-        np.save(output_filename, result)
-
-        logger.info(f"Frequency: {freq}, Best fval: {best_value}, Best params: {best_params}")
-        logger.info(f"Results saved to {output_filename}")
-        return freq, result
-    
-    except Exception as e:
-        logger.error(f"Error analyzing frequency {freq}: {e}")
-        return freq, None
-
 if __name__ == '__main__':
-    # Frequency range
-    frequencies = np.arange(OMEGA_MIN + 5, OMEGA_MAX, 10)
 
     # Create output directory
     os.makedirs(OUT_DIR, exist_ok=True)

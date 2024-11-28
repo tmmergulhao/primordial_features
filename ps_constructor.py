@@ -55,7 +55,7 @@ class PowerSpectrumConstructor:
         self.k_norm = 0.05 / self.h  # [h/Mpc]
 
         # Array for the Hankel transform
-        self.kh_ext = np.logspace(-4, np.log10(10), 2**12)
+        self.kh_ext = np.logspace(-4, np.log10(10), 2**10)
 
         # Array to evaluate the theory
         self.k = k_array
@@ -100,7 +100,7 @@ class PowerSpectrumConstructor:
 
         return InterpolatedUnivariateSpline(kh_output, P_window)
 
-    def SmoothAmplitude(self, _k, sigma_s, B2, a0, a1, a2, a3, a4):
+    def SmoothAmplitude(self, _k, sigma_s, B2, a0, a1, a2, a3, a4, a5, a6):
         """
         Compute the smooth amplitude for the power spectrum.
 
@@ -119,7 +119,7 @@ class PowerSpectrumConstructor:
         invk_norm = self.k_norm / _k
         theory_broadband = (
             a0 * invk_norm**3 + a1 * invk_norm**2 + a2 * invk_norm + a3 +
-            a4 * (_k)**2 * np.exp(-0.1 * _k**2)
+            (a4 * (_k)**2 + a5 * (_k)**3 + a6 * (_k)**4) * np.exp(-0.1 * _k**2)
         )
 
         # Compute the full non-wiggle part
@@ -248,13 +248,13 @@ class PowerSpectrumConstructor:
             array-like: The evaluated power spectrum.
         """
         # Get the broadband + feature parameters
-        B, sigma_nl, sigma_s, a0, a1, a2, a3, a4, alpha, *deltaP_params = params
+        B, a0, a1, a2, a3, a4, a5, a6, alpha, sigma_nl, sigma_s, *deltaP_params = params
         
         # Compute delta_P (primordial feature)
         deltaP = self.PrimordialFeatureModels[self.model](self.k, deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
-        P_nw = self.SmoothAmplitude(self.k, sigma_s, B, a0, a1, a2, a3, a4)
+        P_nw = self.SmoothAmplitude(self.k, sigma_s, B, a0, a1, a2, a3, a4, a5, a6)
 
         # BAO oscillations
         BAO_wiggles = self.BAO(self.k, alpha)
@@ -280,13 +280,13 @@ class PowerSpectrumConstructor:
             array-like: The evaluated power spectrum with window function convolution.
         """
         # Get the broadband + feature parameters
-        B, a0, a1, a2, a3, a4, alpha, sigma_nl, sigma_s, *deltaP_params = params
+        B, a0, a1, a2, a3, a4, a5, a6, alpha, sigma_nl, sigma_s, *deltaP_params = params
         
         # Compute delta_P (primordial feature)
         deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext,deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
-        P_nw = self.SmoothAmplitude(self.kh_ext, sigma_s, B, a0, a1, a2, a3, a4)
+        P_nw = self.SmoothAmplitude(self.kh_ext, sigma_s, B, a0, a1, a2, a3, a4, a5, a6)
 
         # BAO oscillations
         BAO_wiggles = self.BAO(self.kh_ext, alpha)
