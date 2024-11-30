@@ -1,26 +1,21 @@
 # main.py
 import numpy as np
-import ps_constructor
-import likelihood
-import mcmc_toolkit
-import os
-import argparse
-import logging
+import likelihood, mcmc_toolkit, ps_constructor, data_handling
+import logging, argparse
 from tqdm import tqdm
 from scipy.interpolate import interp1d
 from scipy.interpolate import InterpolatedUnivariateSpline
 from multiprocessing import Pool
 from dotenv import load_dotenv
-import data_handling
 import matplotlib.pyplot as plt
-import os
+import os,json
 from iminuit import Minuit
 
 #########################################LOADING THE DATA###########################################
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
 parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
-parser.add_argument('--mock', type=int, required=False, help='What mock to use')
+parser.add_argument('--mock', type=int, required=True, help='What mock to use')
 parser.add_argument('--handle', type=str, required=False, help='Add a prefix to the chains and log file')
 args = parser.parse_args()
 
@@ -94,7 +89,6 @@ logger = logging.getLogger(__name__)
 
 # Log the variables
 logger.info(f'******************************************************** CHI2 minimizer ********************************************************')
-logger.info(f'Processes: {PROCESSES}')
 logger.info(f'DATA NGC file: {DATA_NGC_file}')
 logger.info(f'DATA SGC file: {DATA_SGC_file}')
 logger.info(f'COV file: {COV_file}')
@@ -112,6 +106,7 @@ mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+h
 ndim_NGC = len(mcmc.input_prior['NGC'])
 ndim_SGC = len(mcmc.input_prior['SGC'])
 mcmc.set_walkers(Nguess)
+limits = [(mcmc.prior_bounds[0][i], mcmc.prior_bounds[1][i]) for i in range(mcmc.ndim)]
 #********************** Defining the theory ********************************************************
 # The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
 # of NGC and SGC are different, they will have different window functions. It means that we will
@@ -148,17 +143,21 @@ def theory(theta):
     theta_SGC = theta[ndim_NGC:ndim_NGC+ndim_SGC]
     shared_params = theta[ndim_NGC+ndim_SGC:]
 
-    theta_NGC = theta_NGC + shared_params
-    theta_SGC = theta_SGC + shared_params
+    theta_NGC = np.concatenate([theta_NGC, shared_params])
+    theta_SGC = np.concatenate([theta_SGC, shared_params])
     
     # Use np.concatenate to combine the results from both theories
     return np.concatenate((theory_NGC(theta_NGC), theory_SGC(theta_SGC)))
+
 #***************************************************************************************************
 #Create the likelihood
 PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
+Nmocks = 1000
+nb = len(k)
+HARTLAP = (Nmocks - nb - 2)/(Nmocks - 1)
 
-def chi2(theta):
-    return PrimordialFeature_likelihood.chi2(theta)
+def chi2(*theta):
+    return HARTLAP*PrimordialFeature_likelihood.chi2(list(theta))
 
 #Region in parameter to create the walkers ( Uniform[X0 +- DELTA] )
 X0_str = os.getenv('X0')
@@ -167,9 +166,9 @@ DELTA_str = os.getenv('DELTA')
 #Re-define the chains and figures directory
 CHAIN_DIR = os.getenv('CHAIN_DIR')
 if CHAIN_DIR:
-    OUT_DIR = os.path.join(CHAIN_DIR,prior_name,"BAO")
+    OUT_DIR = os.path.join(CHAIN_DIR,prior_name)
     os.makedirs(OUT_DIR, exist_ok=True)
-
+    
 if X0_str:
     X0 = np.array([float(x) for x in X0_str.split(',')])
     DELTA = np.array([float(x) for x in DELTA_str.split(',')])
@@ -179,19 +178,35 @@ else:
     DELTA = np.array([])
     logger.warning('X0 and SIGMA not set')
 
+# Generate initial positions
+initial_positions = mcmc.create_walkers('uniform_thin', x0=X0, delta=DELTA)
+
 if __name__ == '__main__':
+    #TODO: Add the option to run the analyses for different initial positions
+    for this_guess in tqdm(initial_positions):
+        m = Minuit(chi2, name=mcmc.labels, **{x: val for x, val in zip(mcmc.labels, this_guess)})
+        m.limits = limits
 
-    # Create output directory
-    os.makedirs(OUT_DIR, exist_ok=True)
+        # Run MIGRAD minimization
+        m.migrad(ncall=20000)
 
-    # Use multiprocessing Pool to process frequencies in parallel
-    with Pool(processes = PROCESSES) as pool:
-        results = list(tqdm(pool.imap(analyze_frequency, frequencies), total=len(frequencies)))
+        # Compute HESSE covariance matrix
+        #m.hesse()
 
-    # Optionally combine all results into a single dictionary (if needed)
-    combined_results = {freq: res for freq, res in results if res is not None}
+        # Compute MINOS asymmetric uncertainties
+        #m.minos()
+        
+        # Extract fit results
+        fit_results = {
+            'param_values': list(m.values),  # Parameter names and their fitted values
+            'param_errors': m.errors.to_dict(),
+            'correlation_matrix': m.covariance.correlation().tolist(),  # Correlation matrix as a list of lists
+            'fmin': m.fmin.fval,  # Function minimum details as a dictionary
+            'dof': int(2*len(k)-mcmc.ndim),  # Degrees of freedom
+        }
 
-    # Save combined results as a backup
-    combined_output_file = os.path.join(OUT_DIR, "combined_results.npy")
-    np.save(combined_output_file, combined_results)
-    logger.info(f"Combined results saved to {combined_output_file}")
+        # Save to a JSON file
+        with open(OUT_DIR+"/"+handle+'_results.json', 'w') as f:
+            json.dump(fit_results, f, indent=4)
+
+        logger.info("Fit results saved to 'fit_results.json'.")
