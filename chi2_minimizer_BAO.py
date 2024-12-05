@@ -8,7 +8,7 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 from multiprocessing import Pool
 from dotenv import load_dotenv
 import matplotlib.pyplot as plt
-import os,json
+import os,json, sys
 from iminuit import Minuit
 
 #########################################LOADING THE DATA###########################################
@@ -21,13 +21,12 @@ args = parser.parse_args()
 
 # Load environment variables from the specified .env file
 load_dotenv(args.env)
-PROCESSES = int(os.getenv('PROCESSES'))
 
 # Load the data products
-k_file = os.getenv('DATA_k').format(args.mock)
 DATA_NGC_file = os.getenv('DATA_NGC').format(args.mock)
 DATA_SGC_file = os.getenv('DATA_SGC').format(args.mock)
-COV_file = os.getenv('COV')
+COV_NGC_file = os.getenv('COV_NGC')
+COV_SGC_file = os.getenv('COV_SGC')
 fn_wf_ngc = os.getenv('FN_WF_NGC')
 fn_wf_sgc = os.getenv('FN_WF_SGC')
 
@@ -57,17 +56,21 @@ if fn_wf_sgc is not None:
     #Make sure the window function is normalised
     wfunc_SGC[1] = wfunc_SGC[1]/wfunc_SGC[1][0]
 
-# Load the k-array and apply the mask
-k    = data_handling.load_data_k(k_file)
-mask = data_handling.compute_mask(k, KMIN, KMAX)
-
 # Load the filtered data and covariance
-DATA_NGC = data_handling.load_data(DATA_NGC_file, mask)
-DATA_SGC = data_handling.load_data(DATA_SGC_file, mask)
+k, DATA_NGC = data_handling.load_data(DATA_NGC_file)
+k, DATA_SGC = data_handling.load_data(DATA_SGC_file)
 DATA = np.concatenate((DATA_NGC, DATA_SGC))
-covariance = data_handling.load_cov(COV_file, mask)
-k = k[mask]
-invcov = np.linalg.inv(covariance)
+COV_NGC = data_handling.load_cov(COV_NGC_file)
+COV_SGC = data_handling.load_cov(COV_SGC_file)
+COV = np.zeros((2*len(k), 2*len(k)))
+COV[:len(DATA_NGC), :len(DATA_NGC)] = COV_NGC
+COV[len(DATA_NGC):, len(DATA_NGC):] = COV_SGC
+COV *= 1.2
+
+#Nmocks = 1000
+#nb = len(k)
+#HARTLAP = 1#(Nmocks - nb - 2)/(Nmocks - 1)
+invcov = np.linalg.inv(COV)
 
 # Create the name of the data file
 data_file_name = DATA_NGC_file.split('/')[-1].replace('.txt', '')
@@ -91,7 +94,8 @@ logger = logging.getLogger(__name__)
 logger.info(f'******************************************************** CHI2 minimizer ********************************************************')
 logger.info(f'DATA NGC file: {DATA_NGC_file}')
 logger.info(f'DATA SGC file: {DATA_SGC_file}')
-logger.info(f'COV file: {COV_file}')
+logger.info(f'COV NGC file: {COV_NGC_file}')
+logger.info(f'COV SGC file: {COV_SGC_file}')
 logger.info(f'Window function (NGC): {fn_wf_ngc}')
 logger.info(f'Window function (SGC): {fn_wf_sgc}')
 logger.info(f'linear matter power spectrum: {PLIN}')
@@ -107,6 +111,19 @@ ndim_NGC = len(mcmc.input_prior['NGC'])
 ndim_SGC = len(mcmc.input_prior['SGC'])
 mcmc.set_walkers(Nguess)
 limits = [(mcmc.prior_bounds[0][i], mcmc.prior_bounds[1][i]) for i in range(mcmc.ndim)]
+#********************** Defining the theory ********************************************************
+# The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
+# of NGC and SGC are different, they will have different window functions. It means that we will
+# need to convolve the NGC and SGC separately. It can be done in the following way:
+#       i)The total parameter space will have dimensions that are exclusive to a galaxy cap and
+#        shared ones.
+#        
+#       ii)For a given input theta, we will split it into theta_NGC and theta SGC.
+#
+#       iii) Compute the theory for NGC and SGC
+#
+#       iv) Concatenate the result from the step above and compare with data.
+
 #********************** Defining the theory ********************************************************
 # The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
 # of NGC and SGC are different, they will have different window functions. It means that we will
@@ -152,12 +169,9 @@ def theory(theta):
 #***************************************************************************************************
 #Create the likelihood
 PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
-Nmocks = 1000
-nb = len(k)
-HARTLAP = (Nmocks - nb - 2)/(Nmocks - 1)
 
 def chi2(*theta):
-    return HARTLAP*PrimordialFeature_likelihood.chi2(list(theta))
+    return PrimordialFeature_likelihood.chi2(list(theta))
 
 #Region in parameter to create the walkers ( Uniform[X0 +- DELTA] )
 X0_str = os.getenv('X0')

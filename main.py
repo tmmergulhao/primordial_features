@@ -3,27 +3,40 @@ import numpy as np
 import ps_constructor
 import likelihood
 import mcmc_toolkit
-import os
 import argparse
 import logging
 import json
-import sys
+import sys,os
 from scipy.interpolate import interp1d
 from scipy.interpolate import InterpolatedUnivariateSpline
 from multiprocessing import Pool
 from dotenv import load_dotenv
 import data_handling
-import matplotlib.pyplot as plt
-import os
+
 #########################################LOADING THE DATA###########################################
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
 parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
-parser.add_argument('--omega_min', type=float, required=False, help='Minimum value of omega')
-parser.add_argument('--omega_max', type=float, required=False, help='Maximum value of omega')
-parser.add_argument('--mock', type=int, required=False, help='What mock to use')
+parser.add_argument('--omega_min', type=float, required=True, help='Minimum value of omega')
+parser.add_argument('--omega_max', type=float, required=True, help='Maximum value of omega')
+parser.add_argument('--mock', type=int, required=True, help='What mock to use')
 parser.add_argument('--handle', type=str, required=False, help='Add a prefix to the chains and log file')
+parser.add_argument('--machine', type =str,required=True)
 args = parser.parse_args()
+
+#Load the paths
+MACHINE = args.machine
+PATHS = data_handling.load_json_to_dict('paths.json')[MACHINE]
+MAIN_DIR = PATHS['MAIN_DIR']
+DATA_DIR = PATHS['DATA_DIR']
+FIG_DIR = PATHS['FIG_DIR']
+CHAIN_DIR = PATHS['CHAIN_DIR']
+
+# Load the environment variables
+CHAIN_FOLDER = os.getenv('CHAIN_FOLDER')
+FIG_FOLDER = os.getenv('FIG_FOLDER')
+CHAIN_PATH = os.path.join(CHAIN_DIR, CHAIN_FOLDER)
+FIG_PATH = os.path.join(FIG_DIR, FIG_FOLDER)
 
 # The frequency range to be scanned
 OMEGA_MIN = float(args.omega_min)
@@ -37,22 +50,34 @@ MULTIPROCESSING = os.getenv('MULTIPROCESSING')
 PROCESSES = int(os.getenv('PROCESSES'))
 
 # Load the data products
-k_file = os.getenv('DATA_k').format(args.mock)
 DATA_NGC_file = os.getenv('DATA_NGC').format(args.mock)
+DATA_NGC_file = os.path.join(DATA_DIR, DATA_NGC_file)
+
 DATA_SGC_file = os.getenv('DATA_SGC').format(args.mock)
-COV_file = os.getenv('COV')
+DATA_SGC_file = os.path.join(DATA_DIR, DATA_SGC_file)
+
+COV_NGC_file = os.getenv('COV_NGC')
+COV_NGC_file = os.path.join(DATA_DIR, COV_NGC_file)
+
+COV_SGC_file = os.getenv('COV_SGC')
+COV_SGC_file = os.path.join(DATA_DIR, COV_SGC_file)
+
 fn_wf_ngc = os.getenv('FN_WF_NGC')
+fn_wf_ngc = os.path.join(DATA_DIR, fn_wf_ngc)
+
 fn_wf_sgc = os.getenv('FN_WF_SGC')
+fn_wf_sgc = os.path.join(DATA_DIR, fn_wf_sgc)
 
 # Linear matter power spectrum (smooth and wiggly part)
 PLIN = os.getenv('PLIN')
+PLIN = os.path.join(MAIN_DIR, PLIN)
 
 # Specify the primordial feature model
 primordialfeature_model = os.getenv('MODEL')
 
 # Get the prior
 prior_name = os.getenv('PRIOR_NAME')
-priors_dir = os.getenv('PRIORS_DIR')
+prior_file = os.path.join(MAIN_DIR, 'priors', f'{prior_name}.json')
 
 # Number of walkers per free parameter
 nwalkers_per_param = int(os.getenv('NWALKERS_PER_PARAM'))
@@ -79,16 +104,20 @@ if fn_wf_sgc is not None:
     wfunc_SGC[1] = wfunc_SGC[1]/wfunc_SGC[1][0]
 
 # Load the k-array and apply the mask
-k    = data_handling.load_data_k(k_file)
-mask = data_handling.compute_mask(k, KMIN, KMAX)
-
-# Load the filtered data and covariance
-DATA_NGC = data_handling.load_data(DATA_NGC_file, mask)
-DATA_SGC = data_handling.load_data(DATA_SGC_file, mask)
+data_processor = data_handling.DataProcessor(KMIN, KMAX)
+k,DATA_NGC = data_processor.load_data(DATA_NGC_file)
+k,DATA_SGC = data_processor.load_data(DATA_SGC_file)
 DATA = np.concatenate((DATA_NGC, DATA_SGC))
-covariance = data_handling.load_cov(COV_file, mask)
-k = k[mask]
-invcov = np.linalg.inv(covariance)
+
+COV_NGC = data_processor.load_cov(COV_NGC_file)
+COV_SGC = data_processor.load_cov(COV_SGC_file)
+COV = np.block([[COV_NGC, np.zeros_like(COV_NGC)], [np.zeros_like(COV_SGC), COV_SGC]])
+invCOV = np.linalg.inv(COV)
+
+#HARTLAP CORRECTION
+Nmocks = 1000
+Nb = len(k)
+invCOV *= (Nmocks-Nb-2-1)/(Nmocks-1)
 
 # Create the name of the data file
 data_file_name = DATA_NGC_file.split('/')[-1].replace('.txt', '')
@@ -110,14 +139,13 @@ logger = logging.getLogger(__name__)
 logger.info(f'Processes: {PROCESSES}')
 logger.info(f'DATA NGC file: {DATA_NGC_file}')
 logger.info(f'DATA SGC file: {DATA_SGC_file}')
-logger.info(f'COV file: {COV_file}')
+logger.info(f'COV NGC file: {COV_NGC_file}')
 logger.info(f'Window function (NGC): {fn_wf_ngc}')
 logger.info(f'Window function (SGC): {fn_wf_sgc}')
 logger.info(f'linear matter power spectrum: {PLIN}')
 logger.info(f'primordial feature model: {primordialfeature_model}')
 logger.info(f'prior_name: {prior_name}')
 logger.info(f'nwalkers_per_param: {nwalkers_per_param}')
-logger.info(f'priors_dir: {priors_dir}')
 logger.info(f'MULTIPROCESSING: {MULTIPROCESSING}')
 logger.info(f'KMIN: {KMIN}')
 logger.info(f'KMAX: {KMAX}')
@@ -126,7 +154,7 @@ logger.info(f'OMEGA_MAX: {OMEGA_MAX}')
 logger.info(f'Filename: {common_name}')
 
 # Initialize the MCMC
-mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=priors_dir, log_file='log/'+handle_log)
+mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=prior_file, log_file='log/'+handle_log)
 ndim_NGC = len(mcmc.input_prior['NGC'])
 ndim_SGC = len(mcmc.input_prior['SGC'])
 #********************** Defining the theory ********************************************************
@@ -173,7 +201,7 @@ def theory(theta):
     return np.concatenate((theory_NGC(theta_NGC), theory_SGC(theta_SGC)))
 #***************************************************************************************************
 #Create the likelihood
-PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invcov)
+PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invCOV)
 
 # Initialize the MCMC
 mcmc.set_walkers(nwalkers_per_param * mcmc.ndim)
@@ -212,16 +240,11 @@ else:
     logger.warning('X0 and SIGMA not set')
 
 #Re-define the chains and figures directory
-CHAIN_DIR = os.getenv('CHAIN_DIR')
-if CHAIN_DIR:
-    CHAIN_DIR = os.path.join(CHAIN_DIR,prior_name,f"omega_{int(OMEGA_MIN)}_{int(OMEGA_MAX)}")
-    os.makedirs(CHAIN_DIR, exist_ok=True)
-    mcmc.change_chain_dir(CHAIN_DIR) 
-FIG_DIR = os.getenv('FIG_DIR')
-if FIG_DIR:
-    FIG_DIR = os.path.join(FIG_DIR,prior_name,f"omega_{int(OMEGA_MIN)}_{int(OMEGA_MAX)}")
-    os.makedirs(FIG_DIR, exist_ok=True)
-    mcmc.change_fig_dir(FIG_DIR)
+os.makedirs(CHAIN_PATH, exist_ok=True)
+mcmc.change_chain_dir(CHAIN_PATH) 
+
+os.makedirs(FIG_PATH, exist_ok=True)
+mcmc.change_fig_dir(FIG_PATH)
 
 #Create the initial positions
 initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA) for _ in range(gelman_rubin['N'])]

@@ -1,106 +1,100 @@
 import numpy as np
 import os
+import json
 
-def load_datafile(filename, start_line=25):
-    # Use genfromtxt to read from the file, skipping the first 24 lines (0-indexed, so start_line-1)
-    _,_,k,p0,_,_ = np.genfromtxt(filename, dtype=complex, skip_header=start_line-1).T
-    return k.real, p0.real
+class DataProcessor:
+    def __init__(self, kmin=None, kmax=None):
+        """
+        Initialize the DataProcessor with optional kmin and kmax values.
 
-def compute_mask(k, KMIN=None, KMAX=None):
-    """Helper function to compute the mask based on KMIN and KMAX.
+        Args:
+            kmin (float, optional): Minimum k value for filtering. Defaults to None.
+            kmax (float, optional): Maximum k value for filtering. Defaults to None.
+        """
+        self.kmin = kmin
+        self.kmax = kmax
 
-    Args:
-        k (np.array): The k array to apply the filter on.
-        KMIN (float, optional): The minimum value of k to filter. Defaults to None.
-        KMAX (float, optional): The maximum value of k to filter. Defaults to None.
+    def load_data(self, filename):
+        """
+        Load the data array and apply a filter mask based on kmin and kmax.
 
-    Returns:
-        mask (np.array): A boolean array representing the mask for filtering.
-    """
-    if KMIN is not None and KMAX is not None:
-        mask = (k >= float(KMIN)) & (k <= float(KMAX))
-    elif KMIN is not None:
-        mask = k >= float(KMIN)
-    elif KMAX is not None:
-        mask = k <= float(KMAX)
-    else:
-        mask = np.ones_like(k, dtype=bool)  # No filtering, mask includes all elements
-    return mask
+        Args:
+            filename (str): Path to the file.
 
-def load_data_k(filename, mask=None):
-    """Function to load the k-array associated with the data and apply a filter mask.
+        Returns:
+            tuple: Filtered k array and p0 array.
+        """
+        _, k, _, p0, _, _ = np.genfromtxt(filename, dtype=complex, skip_header=24).T
+        k, p0 = k.real, p0.real
 
-    Args:
-        filename (str): A string with the path to the file.
-        mask (np.array, optional): A boolean array representing the filter. Defaults to None.
+        if self.kmin is not None or self.kmax is not None:
+            mask = np.ones_like(k, dtype=bool)
+            if self.kmin is not None:
+                mask &= (k >= self.kmin)
+            if self.kmax is not None:
+                mask &= (k <= self.kmax)
+            k, p0 = k[mask], p0[mask]
 
-    Returns:
-        k (np.array): The array containing the k-centers associated with the data.
-    """
-    k, p0 = load_datafile(filename)
-    if mask is not None:
-        return k[mask]
-    return k
+        return k, p0
 
-def load_data(filename, mask=None):
-    """Function to load the data array and apply a filter mask.
+    def load_cov(self, filename, k):
+        """
+        Load the data covariance matrix and apply a filter mask based on kmin and kmax.
 
-    Args:
-        filename (str): A string with the path to the file.
-        mask (np.array, optional): A boolean array representing the filter. Defaults to None.
+        Args:
+            filename (str): Path to the file.
+            k (np.array): The k array after applying the mask.
 
-    Returns:
-        data (np.array): A 1D array containing the filtered data. It should have 
-        twice the length of k-array, as NGC and SGC are stacked.
-    """
-    k,pk = load_datafile(filename)
-    return pk[mask]
+        Returns:
+            np.array: Filtered covariance matrix.
+        """
+        cov = np.loadtxt(filename)
+        if self.kmin is not None or self.kmax is not None:
+            mask = np.ones(len(k), dtype=bool)
+            if self.kmin is not None:
+                mask &= (k >= self.kmin)
+            if self.kmax is not None:
+                mask &= (k <= self.kmax)
 
-def load_cov(filename, mask=None):
-    """Function to load the data covariance with dimensions 2*len(data) X 2*len(data) (the factor
-    of 2 comes after combining NGC with SGC).
+            indices = np.where(mask)[0]
+            cov = cov[np.ix_(indices, indices)]
 
-    Args:
-        filename (str): A string with the path to the file.
-        mask (np.array, optional): A boolean array representing the filter. Defaults to None.
-
-    Returns:
-        cov_filtered (np.array): The filtered covariance matrix.
-    """
-    cov = np.loadtxt(filename)
-    N = cov.shape[0] // 2  # The length of the NGC (and SGC) section
-
-    if mask is not None:
-        cov_ngc = cov[:N, :N][mask][:, mask]  # Filter NGC block
-        cov_sgc = cov[N:, N:][mask][:, mask]  # Filter SGC block
-
-        # Create the filtered covariance matrix with zeroed-off diagonal blocks
-        cov_filtered = np.zeros((cov_ngc.shape[0] + cov_sgc.shape[0], cov_ngc.shape[1] + cov_sgc.shape[1]))
-        cov_filtered[:cov_ngc.shape[0], :cov_ngc.shape[1]] = cov_ngc  # NGC block
-        cov_filtered[cov_ngc.shape[0]:, cov_ngc.shape[1]:] = cov_sgc  # SGC block
-
-        return cov_filtered
-
-    return cov
+        return cov
 
 def load_winfunc(filename):
-    """Function to load the survey window function.
+    """
+    Load the survey window function.
 
     Args:
-        filename (str): A string with the path to the file (.txt or .npy).
-    
+        filename (str): Path to the file (.txt or .npy).
+
     Returns:
-        np.array: A numpy array with two columns containing the separation of the window function
-        in configuration space.
+        np.array: Array with two columns containing the window function separation.
     """
-    # Check the file extension
     _, file_extension = os.path.splitext(filename)
-    
     if file_extension == ".txt":
-        # Load .txt file using np.loadtxt and return the first two columns
         return np.loadtxt(filename).T[0:2]
     elif file_extension == ".npy":
-        # Load .npy file using np.load and return the first two columns
         return np.load(filename).T[0:2]
     else:
         raise ValueError("Unsupported file format. Please provide a .txt or .npy file.")
+
+def load_json_to_dict(file_path):
+    """
+    Load a JSON file into a dictionary.
+
+    Args:
+        file_path (str): Path to the JSON file.
+
+    Returns:
+        dict: Dictionary representation of the JSON file.
+    """
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        return data
+    except FileNotFoundError:
+        print(f"Error: File not found at {file_path}")
+    except json.JSONDecodeError as e:
+        print(f"Error: Failed to decode JSON. {e}")
+    return {}
