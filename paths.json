@@ -16,5 +16,11 @@
         "DATA_DIR":"/cosma/home/dp322/dc-merg1/LSS_DATA",
         "CHAIN_DIR":"/cosma/home/dp322/dc-merg1/chains",
         "FIG_DIR":"/cosma/home/dp322/dc-merg1/figures"
+    },
+    "CUILLIN":{
+        "MAIN_DIR":"/home/tmergulhao/primordial_features",
+        "DATA_DIR":"/home/tmergulhao/LSS_DATA",
+        "CHAIN_DIR":"/home/tmergulhao/chains",
+        "FIG_DIR":"/home/tmergulhao/figures"
     }
    }
