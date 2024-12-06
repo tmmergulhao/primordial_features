@@ -260,7 +260,7 @@ if __name__ == '__main__':
         with Pool(processes = PROCESSES) as pool:
             #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
             mcmc.run(handle, 0, initial_positions, logposterior, pool=pool, 
-            gelman_rubin=True, new  = False)
+            gelman_rubin=True)
 
     # After MCMC chains converge
     plot_results(
