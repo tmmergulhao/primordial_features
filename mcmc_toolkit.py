@@ -89,6 +89,9 @@ class MCMC:
     def change_fig_dir(self,new_dir):
         self.fig_dir = new_dir
 
+    def gelman_rubin(self,gelman_rubin):
+        self.gelman_rubin = gelman_rubin
+
     def set_walkers(self, nwalkers: int) -> None:
         """
         Allow the user to change the number of walkers after the class is initialized.
@@ -228,20 +231,20 @@ class MCMC:
         
         return within_chain_var, mean_chain, chain_length
 
-    def plot_walkers(self, handle: str, gelman_rubins: Optional[Dict[str, Any]] = None, 
+    def plot_walkers(self, handle: str, gelman_rubin: Optional[Dict[str, Any]] = None, 
         save: bool = True) -> None:
         """
         Plot the walkers' positions over steps.
 
         Args:
             handle (str): Handle used in the MCMC analysis.
-            gelman_rubins (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
+            gelman_rubin (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
             criteria. Defaults to None.
             save (bool, optional): Whether to save the plot to a file. Defaults to True.
         """
     
-        if gelman_rubins:
-            N = gelman_rubins['N']
+        if gelman_rubin:
+            N = self.gelman_rubin['N']
             samplers = []
             for i in range(N):
                 filename = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
@@ -273,21 +276,20 @@ class MCMC:
         else:
             plt.show()
 
-    def plot_1d(self, handle: str, gelman_rubins: Optional[Dict[str, Any]] = None,
+    def plot_1d(self, handle: str, gelman_rubin: Optional[Dict[str, Any]] = None,
         save: bool = True) -> None:
         """
         Plot 1D distributions for the given chains.
 
         Args:
             handle (str): Handle used in the MCMC analysis.
-            gelman_rubins (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
+            gelman_rubin (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
             criteria. Defaults to None.
             save (bool, optional): Whether to save the plot to a file. Defaults to True.
         """
-        
 
-        if gelman_rubins:
-            N = gelman_rubins['N']
+        if gelman_rubin:
+            N = self.gelman_rubin['N']
             samplers = []
             for i in range(N):
                 filename = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
@@ -327,7 +329,7 @@ class MCMC:
         else:
             plt.show()
 
-    def plot_corner(self, handle: str, gelman_rubins: Optional[Dict] = None, save: Optional[str] = None, 
+    def plot_corner(self, handle: str, gelman_rubin: Optional[Dict] = None, save: Optional[str] = None, 
     width_inch: int = 15, ranges: Dict = {}, plot_settings: Dict = {'fine_bins': 1000, 
     'fine_bins_2D': 1500, 'smooth_scale_1D': 0.3, 'smooth_scale_2D': 0.2}) -> None:
         """
@@ -347,8 +349,8 @@ class MCMC:
         """
         
         
-        if gelman_rubins is not None:
-            N_chains = gelman_rubins['N']
+        if gelman_rubin is not None:
+            N_chains = self.gelman_rubin['N']
             for i in range(N_chains):
                 name = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
@@ -386,7 +388,7 @@ class MCMC:
             plt.close('all')
             self.logger.info(f'Corner plot saved to {self.fig_dir}/{save}.png')
 
-    def plot_CorrMatrix(self, handle: str, gelman_rubins: Optional[Dict] = None) -> None:
+    def plot_CorrMatrix(self, handle: str, gelman_rubin: Optional[Dict] = None) -> None:
         """
         Plot the correlation matrix for the given chains.
 
@@ -394,8 +396,8 @@ class MCMC:
             handle (str): Handle for the chain files.
             gelman (Dict, optional): Gelman-Rubin diagnostic results. Defaults to None.
         """
-        if gelman_rubins is not None:
-            N_chains = gelman_rubins['N']
+        if gelman_rubin is not None:
+            N_chains = self.gelman_rubin['N']
             for i in range(N_chains):
                 name = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
@@ -465,7 +467,7 @@ class MCMC:
     def run(self, name: str, steps: int, pos: Union[np.ndarray, List[np.ndarray]], 
     loglikelihood: Callable, pool: Optional[Any] = None, new: bool = True, plots: bool = False, 
     args: Optional[List[Any]] = None, a: float = 2, metric_interval: int = 25, 
-    gelman_rubins: Optional[Dict[str, Any]] = None) -> None:
+    gelman_rubin: bool = True) -> None:
         """
         Run the MCMC simulation with optional MPI support and Gelman-Rubin convergence criteria.
 
@@ -484,22 +486,22 @@ class MCMC:
             a (float, optional): Stretch move parameter. Defaults to 2.
             metric_interval (int, optional): Interval at which to calculate and save metrics.
             Defaults to 25.
-            gelman_rubins (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
+            gelman_rubin (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
             criteria. Defaults to None.
         """
 
         autocorr = []
         acceptance = []
 
-        if gelman_rubins:
+        if gelman_rubin:
             # Read the Convergence Parameters from the dictionary
             try:
-                N = gelman_rubins['N']
+                N = self.gelman_rubin['N']
                 if N <= 1:
                     self.logger.warning('The gelman rubin requires 2 or more chains!')
-                epsilon = gelman_rubins['epsilon']
-                minlength = gelman_rubins['min_length']
-                convergence_steps = gelman_rubins['convergence_steps']
+                epsilon = self.gelman_rubin['epsilon']
+                minlength = self.gelman_rubin['min_length']
+                convergence_steps = self.gelman_rubin['convergence_steps']
             except KeyError as e:
                 self.logger.error(f'Problem reading the Gelman-Rubin convergence parameters! Missing key: {e}')
                 sys.exit(-1)
@@ -553,7 +555,7 @@ class MCMC:
             self.logger.info('All chains with the minimum length!')
             self.logger.info('Checking convergence...')
             plotname = f'{name}_{counter}'
-            self.plot_1d(name, gelman_rubins=gelman_rubins)
+            self.plot_1d(name, gelman_rubin=gelman_rubin)
             scalereduction = self.gelman_rubin_convergence(within_chain_var, mean_chain, 
             chain_length / 2)
             eps = abs(1 - scalereduction)
@@ -575,15 +577,15 @@ class MCMC:
                 eps = abs(1 - scalereduction)
 
                 self.logger.info(f'epsilon = {eps}')
-                self.plot_1d(name, gelman_rubins=gelman_rubins)
+                self.plot_1d(name, gelman_rubin=gelman_rubin)
 
             self.logger.info('Convergence Achieved!')
             self.logger.info('Plotting walkers position over steps...')
-            self.plot_walkers(name, gelman_rubins=gelman_rubins)
+            self.plot_walkers(name, gelman_rubin=gelman_rubin)
             self.logger.info('Plotting the correlation matrix...')
-            self.plot_CorrMatrix(name, gelman_rubins=gelman_rubins)
+            self.plot_CorrMatrix(name, gelman_rubin=gelman_rubin)
             self.logger.info('Making a corner plot...')
-            self.plot_corner(handle=name, gelman_rubins=gelman_rubins, save=f'{name}_Corner')
+            self.plot_corner(handle=name, gelman_rubin=gelman_rubin, save=f'{name}_Corner')
             self.logger.info('Done!')
         else:
             # Run the sampler for a fixed number of steps
@@ -624,11 +626,11 @@ class MCMC:
             if plots:
                 self.logger.info('Convergence Achieved!')
                 self.logger.info('Plotting walkers position over steps...')
-                self.plot_walkers(handle=name, gelman_rubins=gelman_rubins)
+                self.plot_walkers(handle=name, gelman_rubin=gelman_rubin)
                 self.logger.info('Plotting the correlation matrix...')
-                self.plot_CorrMatrix(handle=name, gelman_rubins=gelman_rubins)
+                self.plot_CorrMatrix(handle=name, gelman_rubin=gelman_rubin)
                 self.logger.info('Making a corner plot...')
-                self.plot_corner(handle=name, gelman_rubins=gelman_rubins, save=f'{name}_Corner')
+                self.plot_corner(handle=name, gelman_rubin=gelman_rubin, save=f'{name}_Corner')
                 self.logger.info('Done!')
 
     def get_chain(self, handle: str, gelman: Optional[Dict] = None) -> np.ndarray:
@@ -667,7 +669,7 @@ class MCMC:
                 final_chain = backend.get_chain(flat=True, discard=burnin)
 
             return final_chain
-    def get_ML(self, handle: str, gelman: Optional[Dict] = None) -> np.ndarray:
+    def get_ML(self, handle: str, gelman_rubin: Optional[Dict] = None) -> np.ndarray:
         """
         Search in the total sample of walker positions for the set of parameters that gives the 
         best fit to the data.
@@ -682,8 +684,8 @@ class MCMC:
         """
         
 
-        if gelman is not None:
-            N_chains = gelman['N']
+        if gelman_rubin is not None:
+            N_chains = gelman_rubin['N']
             for i in range(N_chains):
                 name = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)
@@ -711,7 +713,7 @@ class MCMC:
         ML_params = final_chain[index_min]
         return ML_params
 
-    def get_logprob(self, handle: str, gelman: Optional[Dict] = None) -> np.ndarray:
+    def get_logprob(self, handle: str, gelman_rubin: Optional[Dict] = None) -> np.ndarray:
         """
         Retrieve the log-probabilities from the MCMC chain.
 
@@ -724,8 +726,8 @@ class MCMC:
             np.ndarray: An array with the log-probabilities.
         """
 
-        if gelman is not None:
-            N_chains = gelman['N']
+        if gelman_rubin is not None:
+            N_chains = gelman_rubin['N']
             for i in range(N_chains):
                 name = os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5')
                 backend = emcee.backends.HDFBackend(name, read_only=True)

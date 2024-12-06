@@ -12,7 +12,9 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 from multiprocessing import Pool
 from dotenv import load_dotenv
 import data_handling
-
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridSpec
+from plot_results import *
 #########################################LOADING THE DATA###########################################
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
@@ -69,10 +71,12 @@ COV_SGC_file = os.getenv('COV_SGC')
 COV_SGC_file = os.path.join(DATA_DIR, COV_SGC_file)
 
 fn_wf_ngc = os.getenv('FN_WF_NGC')
-fn_wf_ngc = os.path.join(DATA_DIR, fn_wf_ngc)
+if fn_wf_ngc is not None:
+    fn_wf_ngc = os.path.join(DATA_DIR, fn_wf_ngc)
 
 fn_wf_sgc = os.getenv('FN_WF_SGC')
-fn_wf_sgc = os.path.join(DATA_DIR, fn_wf_sgc)
+if fn_wf_sgc is not None:
+    fn_wf_sgc = os.path.join(DATA_DIR, fn_wf_sgc)
 
 # Linear matter power spectrum (smooth and wiggly part)
 PLIN = os.getenv('PLIN')
@@ -157,6 +161,7 @@ logger.info(f'Filename: {common_name}')
 mcmc = mcmc_toolkit.MCMC(1, prior_file, log_file='log/'+handle_log)
 ndim_NGC = len(mcmc.input_prior['NGC'])
 ndim_SGC = len(mcmc.input_prior['SGC'])
+mcmc.gelman_rubin(gelman_rubin)
 #********************** Defining the theory ********************************************************
 # The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
 # of NGC and SGC are different, they will have different window functions. It means that we will
@@ -249,9 +254,23 @@ mcmc.change_fig_dir(FIG_PATH)
 initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA) for _ in range(gelman_rubin['N'])]
 
 if __name__ == '__main__':
+
     if MULTIPROCESSING:
         # Create a multiprocessing pool
         with Pool(processes = PROCESSES) as pool:
             #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
             mcmc.run(handle, 0, initial_positions, logposterior, pool=pool, 
-            gelman_rubins=gelman_rubin)
+            gelman_rubin=True, new  = False)
+
+    # After MCMC chains converge
+    plot_results(
+        mcmc=mcmc,
+        likelihood=PrimordialFeature_likelihood,
+        theory=theory,
+        DATA=DATA,
+        COV_NGC=COV_NGC,
+        COV_SGC=COV_SGC,
+        k=k,
+        FIG_PATH=FIG_PATH,
+        handle=handle
+    )
