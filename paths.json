@@ -12,9 +12,9 @@
         "FIG_DIR":"/scratch/dp322/dc-merg1/figures"
     },
     "COSMA":{
-        "MAIN_DIR":"",
-        "DATA_DIR":"",
-        "CHAIN_DIR":"",
-        "FIG_DIR":""
+        "MAIN_DIR":"/cosma/home/dp322/dc-merg1/primordial_features",
+        "DATA_DIR":"/cosma/home/dp322/dc-merg1/LSS_DATA",
+        "CHAIN_DIR":"/cosma/home/dp322/dc-merg1/chains",
+        "FIG_DIR":"/cosma/home/dp322/dc-merg1/figures"
     }
    }

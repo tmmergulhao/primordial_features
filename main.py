@@ -88,7 +88,6 @@ initialize_walkers = os.getenv('INITIALIZE_WALKERS')
 #Get the mask for the k-range
 KMIN = float(os.getenv('KMIN')) if os.getenv('KMIN') is not None else None
 KMAX = float(os.getenv('KMAX')) if os.getenv('KMAX') is not None else None
-
 #########################################PREPARING THE DATA#########################################
 # Load the gelman rubin convergence criteria
 with open('gelman_rubin.json', 'r') as json_file:
