@@ -2,19 +2,19 @@
     "NERSC":{
         "MAIN_DIR":"/global/homes/t/tmm/primordial_features",
         "DATA_DIR":"/global/homes/t/tmm/LSS_DATA",
-        "CHAINS_DIR":"/global/homes/t/tmm/chains",
+        "CHAIN_DIR":"/global/homes/t/tmm/chains",
         "FIG_DIR":"/global/homes/t/tmm/figures"
     },
     "DIRAC":{
-        "MAIN_DIR":"",
-        "DATA_DIR":"",
-        "CHAINS_DIR":"",
-        "FIG_DIR":""
+        "MAIN_DIR":"/home/dc-merg1/primordial_features",
+        "DATA_DIR":"/scratch/dp322/dc-merg1",
+        "CHAIN_DIR":"/scratch/dp322/dc-merg1/chains",
+        "FIG_DIR":"/scratch/dp322/dc-merg1/figures"
     },
     "COSMA":{
         "MAIN_DIR":"",
         "DATA_DIR":"",
-        "CHAINS_DIR":"",
+        "CHAIN_DIR":"",
         "FIG_DIR":""
     }
    }

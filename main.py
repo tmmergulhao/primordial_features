@@ -33,14 +33,20 @@ FIG_DIR = PATHS['FIG_DIR']
 CHAIN_DIR = PATHS['CHAIN_DIR']
 
 # Load the environment variables
-CHAIN_FOLDER = os.getenv('CHAIN_FOLDER')
-FIG_FOLDER = os.getenv('FIG_FOLDER')
-CHAIN_PATH = os.path.join(CHAIN_DIR, CHAIN_FOLDER)
-FIG_PATH = os.path.join(FIG_DIR, FIG_FOLDER)
+load_dotenv(args.env)
 
 # The frequency range to be scanned
 OMEGA_MIN = float(args.omega_min)
 OMEGA_MAX = float(args.omega_max)
+
+# Get the prior
+prior_name = os.getenv('PRIOR_NAME')
+prior_file = os.path.join(MAIN_DIR, 'priors', prior_name)
+CHAIN_FOLDER = os.getenv('CHAIN_FOLDER')
+CHAIN_PATH = os.path.join(CHAIN_DIR, CHAIN_FOLDER, prior_name, f'{OMEGA_MIN}_{OMEGA_MAX}')
+
+FIG_FOLDER = os.getenv('FIG_FOLDER')
+FIG_PATH = os.path.join(FIG_DIR, FIG_FOLDER, prior_name, f'{OMEGA_MIN}_{OMEGA_MAX}')
 
 # Load environment variables from the specified .env file
 load_dotenv(args.env)
@@ -74,10 +80,6 @@ PLIN = os.path.join(MAIN_DIR, PLIN)
 
 # Specify the primordial feature model
 primordialfeature_model = os.getenv('MODEL')
-
-# Get the prior
-prior_name = os.getenv('PRIOR_NAME')
-prior_file = os.path.join(MAIN_DIR, 'priors', f'{prior_name}.json')
 
 # Number of walkers per free parameter
 nwalkers_per_param = int(os.getenv('NWALKERS_PER_PARAM'))
@@ -120,10 +122,8 @@ Nb = len(k)
 invCOV *= (Nmocks-Nb-2-1)/(Nmocks-1)
 
 # Create the name of the data file
-data_file_name = DATA_NGC_file.split('/')[-1].replace('.txt', '')
-common_name = f"{prior_name}_omegamin_{OMEGA_MIN}_omegamax_{OMEGA_MAX}_{data_file_name}"
-common_name = common_name.replace('desipipe_v4_2', "").replace("AbacusSummit", "").replace("z0.8-2.1", "").replace('desi_survey_catalogs_Y1', '').replace('mocks','')  # Remove Abacus and redshift references
-common_name = common_name.replace('SecondGenMocks','').replace('__','').replace('IFFT_recsympk','recsym').replace('altmtl','').replace('NGC','').replace('SGC','')
+data_label = args.env.split('/')[-1].split('.')[0]
+common_name = f"MOCK_{args.mock}_{data_label}_{prior_name}_{OMEGA_MIN}_{OMEGA_MAX}"
 
 if args.handle:
     handle_log = f"{args.handle}_{common_name}.log"
@@ -131,6 +131,7 @@ if args.handle:
 else:
     handle_log = f"{common_name}.log"
     handle = common_name
+
 # Create the log file
 logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -154,7 +155,7 @@ logger.info(f'OMEGA_MAX: {OMEGA_MAX}')
 logger.info(f'Filename: {common_name}')
 
 # Initialize the MCMC
-mcmc = mcmc_toolkit.MCMC(1, prior_name, priors_dir=prior_file, log_file='log/'+handle_log)
+mcmc = mcmc_toolkit.MCMC(1, prior_file, log_file='log/'+handle_log)
 ndim_NGC = len(mcmc.input_prior['NGC'])
 ndim_SGC = len(mcmc.input_prior['SGC'])
 #********************** Defining the theory ********************************************************
@@ -194,11 +195,12 @@ def theory(theta):
     theta_SGC = theta[ndim_NGC:ndim_NGC+ndim_SGC]
     shared_params = theta[ndim_NGC+ndim_SGC:]
 
-    theta_NGC = theta_NGC + shared_params
-    theta_SGC = theta_SGC + shared_params
+    theta_NGC = np.concatenate([theta_NGC, shared_params])
+    theta_SGC = np.concatenate([theta_SGC, shared_params])
     
     # Use np.concatenate to combine the results from both theories
     return np.concatenate((theory_NGC(theta_NGC), theory_SGC(theta_SGC)))
+
 #***************************************************************************************************
 #Create the likelihood
 PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invCOV)
@@ -220,8 +222,6 @@ def logposterior(theta):
     else:
         return PrimordialFeature_likelihood.logGaussian(theta)
 
-print(mcmc.id_map)
-sys.exit(-1)
 omega_ctr = 0.5*(mcmc.prior_bounds[0][mcmc.id_map['omega']]+mcmc.prior_bounds[1][mcmc.id_map['omega']])
 omega_delta = 0.4*abs((mcmc.prior_bounds[0][11]-mcmc.prior_bounds[1][11]))
 

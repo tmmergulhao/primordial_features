@@ -13,53 +13,50 @@ class DataProcessor:
         """
         self.kmin = kmin
         self.kmax = kmax
+        self.mask = None  # Placeholder for the mask
 
     def load_data(self, filename):
         """
-        Load the data array and apply a filter mask based on kmin and kmax.
+        Load the data array, apply the filter, and store k, p0, and mask as attributes.
 
         Args:
             filename (str): Path to the file.
-
-        Returns:
-            tuple: Filtered k array and p0 array.
         """
         _, k, _, p0, _, _ = np.genfromtxt(filename, dtype=complex, skip_header=24).T
         k, p0 = k.real, p0.real
 
-        if self.kmin is not None or self.kmax is not None:
-            mask = np.ones_like(k, dtype=bool)
-            if self.kmin is not None:
-                mask &= (k >= self.kmin)
-            if self.kmax is not None:
-                mask &= (k <= self.kmax)
-            k, p0 = k[mask], p0[mask]
+        # Create a mask based on kmin and kmax
+        self.mask = np.ones_like(k, dtype=bool)
+        if self.kmin is not None:
+            self.mask &= (k >= self.kmin)
+        if self.kmax is not None:
+            self.mask &= (k <= self.kmax)
 
-        return k, p0
-
-    def load_cov(self, filename, k):
+        # Apply the mask
+        self.k = k[self.mask]
+        self.p0 = p0[self.mask]
+        return self.k, self.p0
+    
+    def load_cov(self, filename):
         """
-        Load the data covariance matrix and apply a filter mask based on kmin and kmax.
+        Load the data covariance matrix and apply the filter mask using its outer product.
 
         Args:
             filename (str): Path to the file.
-            k (np.array): The k array after applying the mask.
 
         Returns:
             np.array: Filtered covariance matrix.
         """
+        if self.mask is None:
+            raise ValueError("Mask is not defined. Please call load_data() first.")
+
         cov = np.loadtxt(filename)
-        if self.kmin is not None or self.kmax is not None:
-            mask = np.ones(len(k), dtype=bool)
-            if self.kmin is not None:
-                mask &= (k >= self.kmin)
-            if self.kmax is not None:
-                mask &= (k <= self.kmax)
 
-            indices = np.where(mask)[0]
-            cov = cov[np.ix_(indices, indices)]
+        # Use the outer product of the mask to filter the covariance matrix
+        mask_outer = np.outer(self.mask, self.mask)
+        cov_filtered = cov[mask_outer].reshape(self.mask.sum(), self.mask.sum())
 
-        return cov
+        return cov_filtered
 
 def load_winfunc(filename):
     """
