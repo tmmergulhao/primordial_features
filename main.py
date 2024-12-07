@@ -24,6 +24,7 @@ parser.add_argument('--omega_max', type=float, required=True, help='Maximum valu
 parser.add_argument('--mock', type=int, required=True, help='What mock to use')
 parser.add_argument('--handle', type=str, required=False, help='Add a prefix to the chains and log file')
 parser.add_argument('--machine', type =str,required=True)
+parser.add_argument('--processess', type=int, required=False, help='Number of processes to use')
 args = parser.parse_args()
 
 #Load the paths
@@ -56,8 +57,12 @@ load_dotenv(args.env)
 # Whether or not to use multiprocessing
 MULTIPROCESSING = os.getenv('MULTIPROCESSING')
 PROCESSES = int(os.getenv('PROCESSES'))
+if args.processess:
+    PROCESSES = args.processess
 
 # Load the data products
+if args.mock <0:
+    DATA_FLAG = True
 DATA_NGC_file = os.getenv('DATA_NGC').format(args.mock)
 DATA_NGC_file = os.path.join(DATA_DIR, DATA_NGC_file)
 
@@ -126,7 +131,11 @@ invCOV *= (Nmocks-Nb-2-1)/(Nmocks-1)
 
 # Create the name of the data file
 data_label = args.env.split('/')[-1].split('.')[0]
-common_name = f"MOCK_{args.mock}_{data_label}_{prior_name}_{OMEGA_MIN}_{OMEGA_MAX}"
+
+if DATA_FLAG:
+    common_name = f"DATA_{data_label}_{prior_name}_{OMEGA_MIN}_{OMEGA_MAX}"
+else:    
+    common_name = f"MOCK_{args.mock}_{data_label}_{prior_name}_{OMEGA_MIN}_{OMEGA_MAX}"
 
 if args.handle:
     handle_log = f"{args.handle}_{common_name}.log"
