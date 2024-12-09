@@ -22,35 +22,6 @@ from getdist import MCSamples
 from typing import List, Dict, Any, Optional, Callable, Union
 # Get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
-
-#===================================================================================================
-#Analysis settings
-#===================================================================================================
-#Load the Binning Specs (change it at the .json file if necessary)
-with open(os.path.join(script_dir, 'BinningPosterior.json')) as json_file:
-    BinningSpecs = json.load(json_file)
-
-#Specs for binning the posterior
-A_min = BinningSpecs["A_min"]
-A_max = BinningSpecs ["A_max"]
-A_bin = BinningSpecs["A_bin"]
-A_array = np.arange(A_min, A_max + A_bin, A_bin)
-A_ctrs = 0.5*(A_array[1:]+A_array[:-1])
-
-#Specs for obtaining the Credible intervals
-A_abs_bin = BinningSpecs["A_abs_bin"]
-A_abs_min = 0
-A_abs_max = np.max([abs(A_max),abs(A_min)])
-A_abs_array = np.arange(A_abs_min, A_abs_max + A_abs_bin, A_abs_bin)
-A_abs_ctrs = 0.5*(A_abs_array[1:]+A_abs_array[:-1])
-
-settings_getdist = {
-'ignore_rows':0,
-'fine_bins':2000,
-'fine_bins_2D':2000, 
-'smooth_scale_1D':0.1
-}
-
 #===================================================================================================
 #Analysis toolkit
 #===================================================================================================
@@ -291,7 +262,7 @@ def compute_statistics(file_input: str, file_output: str = None):
 
 if __name__ == '__main__':
     directory = "/home/tmergulhao/primordial_features/chains/DESI_LRG1_MOCK_Abacus/lin_singlepol/omega_100_900/"
-
+    
     n = 4
     burn_in = 0.2
     for i in range(5,6):
