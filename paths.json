@@ -14,8 +14,8 @@
     "COSMA":{
         "MAIN_DIR":"/cosma/home/dp322/dc-merg1/primordial_features",
         "DATA_DIR":"/cosma/home/dp322/dc-merg1/LSS_DATA",
-        "CHAIN_DIR":"/cosma/home/dp322/dc-merg1/chains",
-        "FIG_DIR":"/cosma/home/dp322/dc-merg1/figures"
+        "CHAIN_DIR":"/cosma8/data/dp322/dc-merg1/chains",
+        "FIG_DIR":"/cosma8/data/dp322/dc-merg1/figures"
     },
     "CUILLIN":{
         "MAIN_DIR":"/home/tmergulhao/primordial_features",
