@@ -17,6 +17,7 @@ class PowerSpectrumConstructor:
                 - 'step'
                 - 'sound'
                 - 'None' (i.e., usual BAO analysis without primordial features)
+                - 'external' (for external primordial features)
         
         Raises:
             ValueError: If the model is not one of the valid options.
@@ -30,7 +31,7 @@ class PowerSpectrumConstructor:
             sys.exit(-1)
 
         # Implemented feature models
-        valid_options = {'lin', 'log', 'sound', 'step', 'None'}
+        valid_options = {'lin', 'log', 'sound', 'step', 'None','external'}
 
         if model not in valid_options:
             raise ValueError(f"Invalid model '{model}'. Please choose one of: {', '.join(valid_options)}")
@@ -66,9 +67,12 @@ class PowerSpectrumConstructor:
             'log': self.LogarithmicFeatures_deltaP,
             'sound': self.VaryingSpeedOfSound_deltaP,
             'step': self.StepInPotential_deltaP,
-            'None': lambda _,__: 0
+            'None': lambda _: 0,
         }
     
+    def external_deltaP(self, func):
+        self.PrimordialFeatureModels['external'] = func
+
     def DefineWindowFunction(self, winfunc):
         """
         Initialise the survey window function.
@@ -249,9 +253,12 @@ class PowerSpectrumConstructor:
         """
         # Get the broadband + feature parameters
         B, a0, a1, a2, a3, a4, alpha, sigma_nl, sigma_s, *deltaP_params = params
-        
         # Compute delta_P (primordial feature)
-        deltaP = self.PrimordialFeatureModels[self.model](self.k, deltaP_params)
+
+        if deltaP_params == []:
+            deltaP = self.PrimordialFeatureModels[self.model](self.k)
+        else:
+            deltaP = self.PrimordialFeatureModels[self.model](self.k, deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
         P_nw = self.SmoothAmplitude(self.k, sigma_s, B, a0, a1, a2, a3, a4)
@@ -282,8 +289,10 @@ class PowerSpectrumConstructor:
         # Get the broadband + feature parameters
         B, a0, a1, a2, a3, a4, alpha, sigma_nl, sigma_s, *deltaP_params = params
         
-        # Compute delta_P (primordial feature)
-        deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext,deltaP_params)
+        if deltaP_params == []:
+            deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext)
+        else:
+            deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext, deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
         P_nw = self.SmoothAmplitude(self.kh_ext, sigma_s, B, a0, a1, a2, a3, a4)
