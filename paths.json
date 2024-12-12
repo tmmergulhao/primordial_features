@@ -22,5 +22,11 @@
         "DATA_DIR":"/home/tmergulhao/LSS_DATA",
         "CHAIN_DIR":"/home/tmergulhao/chains",
         "FIG_DIR":"/home/tmergulhao/figures"
+    },
+    "MAC":{
+        "MAIN_DIR":"/Users/s2223060/Desktop/primordial_features/",
+        "DATA_DIR":"/Users/s2223060/Desktop/LSS_DATA",
+        "CHAIN_DIR":"/Users/s2223060/Desktop/primordial_features/chains",
+        "FIG_DIR":"/Users/s2223060/Desktop/primordial_features/figures"
     }
    }
