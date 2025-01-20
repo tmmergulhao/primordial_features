@@ -187,7 +187,8 @@ else:
 # Function to compute chi2 for a given omega and save to a file
 def compute_and_save_chi2(omega, mcmc, X0, DELTA, chi2_func, limits):
     """
-    Computes chi2 for a given omega, runs optimization, and saves result to a file.
+    Computes chi2 for a given omega, runs optimization multiple times with different initial guesses,
+    and saves the best result to a file.
 
     Parameters:
     - omega: The omega value for the current iteration.
@@ -201,25 +202,34 @@ def compute_and_save_chi2(omega, mcmc, X0, DELTA, chi2_func, limits):
     limits[mcmc.id_map['omega']] = (omega, omega)
 
     # Create initial positions
-    initial_positions = mcmc.create_walkers(initialize_walkers, x0=X0, delta=DELTA)[0]
-    initial_positions[mcmc.id_map['omega']] = omega
+    mcmc.set_walkers(10)
+    initial_positions = mcmc.create_walkers(initialize_walkers, x0=X0, delta=DELTA)
 
-    # Run the optimization
-    m = Minuit(chi2_func, name=mcmc.labels, **{x: val for x, val in zip(mcmc.labels, initial_positions)})
-    m.limits = limits
-    m.migrad(ncall=20000)
+    best_chi2 = float('inf')  # Initialize with infinity
+    best_params = None
 
-    # Get the chi2 value and parameters
-    chi2_value = m.fmin.fval
-    params = list(m.values.to_dict().values())
+    for i in range(10):
+        # Get the current initial position
+        init_pos = initial_positions[i]
+        init_pos[mcmc.id_map['omega']] = omega
 
-    # Save the result to a file
-    filename = CHAIN_PATH+f'/chi2_{omega}_{omega}.txt'
+        # Run the optimization
+        m = Minuit(chi2_func, name=mcmc.labels, **{x: val for x, val in zip(mcmc.labels, init_pos)})
+        m.limits = limits
+        m.migrad(ncall=20000)
+
+        # Check if this is the best result so far
+        if m.fmin.fval < best_chi2:
+            best_chi2 = m.fmin.fval
+            best_params = list(m.values.to_dict().values())
+
+    # Save the best result to a file
+    filename = CHAIN_PATH + f'/chi2_{omega}_{omega}.txt'
     with open(filename, 'w') as f:
-        f.write(f'chi2: {chi2_value}\n')
-        f.write(f'params: {params}\n')
+        f.write(f'chi2: {best_chi2}\n')
+        f.write(f'params: {best_params}\n')
 
-    print(f"Processed omega: {omega} -> Saved to {filename}")
+    print(f"Processed omega: {omega} -> Saved best result to {filename}")
 
 # Parallel execution setup
 if __name__ == '__main__':

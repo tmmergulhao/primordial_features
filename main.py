@@ -130,7 +130,7 @@ invCOV = np.linalg.inv(COV)
 #HARTLAP CORRECTION
 Nmocks = 1000
 Nb = len(k)
-invCOV *= (Nmocks-Nb-2-1)/(Nmocks-1)
+invCOV *= (Nmocks-Nb-2)/(Nmocks-1)
 
 # Create the name of the data file
 data_label = args.env.split('/')[-1].split('.')[0]
