@@ -80,7 +80,7 @@ if args.mock <0:
     DATA_FLAG = True
 else:
     DATA_FLAG = False
-    
+
 DATA_NGC_file = os.getenv('DATA_NGC').format(args.mock)
 DATA_NGC_file = os.path.join(DATA_DIR, DATA_NGC_file)
 

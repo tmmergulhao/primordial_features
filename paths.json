@@ -2,8 +2,8 @@
     "NERSC":{
         "MAIN_DIR":"/global/homes/t/tmm/primordial_features",
         "DATA_DIR":"/global/homes/t/tmm/LSS_DATA",
-        "CHAIN_DIR":"/global/homes/t/tmm/chains",
-        "FIG_DIR":"/global/homes/t/tmm/figures"
+        "CHAIN_DIR":"/pscratch/sd/t/tmm/chains",
+        "FIG_DIR":"/pscratch/sd/t/tmm/figures"
     },
     "DIRAC":{
         "MAIN_DIR":"/home/dc-merg1/primordial_features",
@@ -22,5 +22,11 @@
         "DATA_DIR":"/home/tmergulhao/LSS_DATA",
         "CHAIN_DIR":"/home/tmergulhao/chains",
         "FIG_DIR":"/home/tmergulhao/figures"
+    },
+    "MAC":{
+        "MAIN_DIR":"/Users/s2223060/Desktop/primordial_features/",
+        "DATA_DIR":"/Users/s2223060/Desktop/LSS_DATA",
+        "CHAIN_DIR":"/Users/s2223060/Desktop/primordial_features/chains",
+        "FIG_DIR":"/Users/s2223060/Desktop/primordial_features/figures"
     }
    }
