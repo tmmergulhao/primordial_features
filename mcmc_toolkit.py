@@ -89,7 +89,7 @@ class MCMC:
     def change_fig_dir(self,new_dir):
         self.fig_dir = new_dir
 
-    def gelman_rubin(self,gelman_rubin):
+    def set_gelman_rubin(self,gelman_rubin):
         self.gelman_rubin = gelman_rubin
 
     def set_walkers(self, nwalkers: int) -> None:

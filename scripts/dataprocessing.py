@@ -6,7 +6,7 @@ import postprocessing as pp
 # Directories and filenames
 chains_dir = '/home/tmergulhao/chains/'
 analysis_dir = '/home/tmergulhao/PF_DESI_RESULTS/'
-s_template = 'DESI_Y1_DATA_LRG3/lin_singlepol/{}.0_{}.0/DATA_DESI_LRG3_DATA_prerecon_lin_singlepol_{}.0_{}.0_'
+s_template = 'DESI_Y1_DATA_ELG2/lin_singlepol/{}.0_{}.0/DATA_DESI_ELG2_DATA_prerecon_lin_singlepol_{}.0_{}.0_'
 freqs = [[100,900],[800,2000],[1900,3000],[2900,4000]]
 
 for freq in freqs:
