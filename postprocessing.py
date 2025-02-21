@@ -68,7 +68,7 @@ compression="gzip", compression_opts=9):
     else:
         final_chain, final_logprob = None, None
         for i in range(n):
-            file_name = os.path.join(f"{handle}Run_{i}.h5")
+            file_name = os.path.join(f"{handle}_Run_{i}.h5")
             print(file_name)
             chain, logprob = read_chain_emcee(file_name, burnin_frac, thin)
             if final_chain is None:
@@ -102,7 +102,7 @@ def load_chain(file_path: str) -> np.ndarray:
         raise
 
 def BinnedChain(handle_list: List[str], binning_limits: List[Union[float, float]], 
-    file_output: str, binning_id: int, freq_bin: int = 10) -> None:
+    file_output: str, binning_axis: int, freq_bin: int = 10) -> None:
     """
     Bin the MCMC samples along the feature frequency.
 
@@ -134,7 +134,7 @@ def BinnedChain(handle_list: List[str], binning_limits: List[Union[float, float]
 
             #load the chain
             chain, logprob = load_chain(chain_file)
-            binning_samples = chain[binning_id]
+            binning_samples = chain[binning_axis]
             mapping = np.digitize(binning_samples,binning_edges)
             for sample_i,bin_it_belongs in tqdm(enumerate(mapping)):
                 if 1 <= bin_it_belongs < len(binning_edges):  # Adjust to within expected range

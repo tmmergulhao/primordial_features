@@ -479,19 +479,19 @@ class MCMC:
             loglikelihood (Callable): Log-likelihood function.
             pool (Optional[Any], optional): Pool for parallel processing. Defaults to None.
             new (bool, optional): Whether to start a new run or continue from the last sample.
-             Defaults to True.
+            Defaults to True.
             plots (bool, optional): Whether to generate plots. Defaults to False.
             args (List[Any], optional): Additional arguments for the log-likelihood function.
-             Defaults to None.
+            Defaults to None.
             a (float, optional): Stretch move parameter. Defaults to 2.
             metric_interval (int, optional): Interval at which to calculate and save metrics.
             Defaults to 25.
-            gelman_rubin (Dict[str, Any], optional): Dictionary with Gelman-Rubin convergence 
-            criteria. Defaults to None.
+            gelman_rubin (bool, optional): Whether to use Gelman-Rubin convergence criteria.
+            Defaults to True.
         """
-
         autocorr = []
         acceptance = []
+        self.chain_file_paths = []  # Initialize the variable to store chain file paths
 
         if gelman_rubin:
             # Read the Convergence Parameters from the dictionary
@@ -532,9 +532,10 @@ class MCMC:
             # Create all the samplers and their walkers
             for i in range(N):
                 filename = os.path.join(self.chain_dir, f'{name}_Run_{i}.h5')
+                self.chain_file_paths.append(filename)  # Store the file path
                 backend = emcee.backends.HDFBackend(filename)
                 sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, loglikelihood,
-                 args=args, backend=backend, moves=[emcee.moves.StretchMove(a=a)], pool=pool)
+                                                args=args, backend=backend, moves=[emcee.moves.StretchMove(a=a)], pool=pool)
                 list_samplers.append(sampler)
 
             # Kicking off all chains to have the minimum length
@@ -556,8 +557,7 @@ class MCMC:
             self.logger.info('Checking convergence...')
             plotname = f'{name}_{counter}'
             self.plot_1d(name, gelman_rubin=gelman_rubin)
-            scalereduction = self.gelman_rubin_convergence(within_chain_var, mean_chain, 
-            chain_length / 2)
+            scalereduction = self.gelman_rubin_convergence(within_chain_var, mean_chain, chain_length / 2)
             eps = abs(1 - scalereduction)
 
             self.logger.info(f'epsilon = {eps}')
@@ -580,16 +580,18 @@ class MCMC:
                 self.plot_1d(name, gelman_rubin=gelman_rubin)
 
             self.logger.info('Convergence Achieved!')
-            self.logger.info('Plotting walkers position over steps...')
-            self.plot_walkers(name, gelman_rubin=gelman_rubin)
-            self.logger.info('Plotting the correlation matrix...')
-            self.plot_CorrMatrix(name, gelman_rubin=gelman_rubin)
-            self.logger.info('Making a corner plot...')
-            self.plot_corner(handle=name, gelman_rubin=gelman_rubin, save=f'{name}_Corner')
-            self.logger.info('Done!')
+            if plots:
+                self.logger.info('Plotting walkers position over steps...')
+                self.plot_walkers(name, gelman_rubin=gelman_rubin)
+                self.logger.info('Plotting the correlation matrix...')
+                self.plot_CorrMatrix(name, gelman_rubin=gelman_rubin)
+                self.logger.info('Making a corner plot...')
+                self.plot_corner(handle=name, gelman_rubin=gelman_rubin, save=f'{name}_Corner')
+                self.logger.info('Done!')
         else:
             # Run the sampler for a fixed number of steps
             filename = os.path.join(self.chain_dir, f'{name}.h5')
+            self.chain_file_paths.append(filename)  # Store the file path
             backend = emcee.backends.HDFBackend(filename)
             sampler = emcee.EnsembleSampler(
                 self.nwalkers, self.ndim, loglikelihood, args=args, backend=backend,
@@ -622,7 +624,7 @@ class MCMC:
                             self.logger.info(f'Mean acceptance fraction: {np.mean(sampler.acceptance_fraction)}')
                             self.logger.info(f'Mean autocorrelation time: {np.mean(tau)}')
                         except emcee.autocorr.AutocorrError:
-                            self.logger.warning('Autocorrelation time could not be estimated.')  
+                            self.logger.warning('Autocorrelation time could not be estimated.')
             if plots:
                 self.logger.info('Convergence Achieved!')
                 self.logger.info('Plotting walkers position over steps...')

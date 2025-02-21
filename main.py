@@ -15,6 +15,8 @@ import data_handling
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridSpec
 from plot_results import *
+import postprocessing as pp
+
 #########################################LOADING THE DATA###########################################
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
@@ -26,6 +28,8 @@ parser.add_argument('--handle', type=str, required=False, help='Add a prefix to 
 parser.add_argument('--machine', type =str,required=True)
 parser.add_argument('--processess', type=int, required=False, help='Number of processes to use')
 parser.add_argument('--debug',default=False, type=bool, required=False, help='Number of processes to use')
+parser.add_argument('--postprocess',default=True, type=bool, required=False, help='Post process the chains')
+
 args = parser.parse_args()
 
 #Load the paths
@@ -207,9 +211,9 @@ mcmc.set_gelman_rubin(gelman_rubin)
 
 if args.debug:
     mcmc.set_gelman_rubin({
-        "N":1,
+        "N":2,
         "epsilon":10,
-        "min_length":50,
+        "min_length":200,
         "convergence_steps":10
     })
 #********************** Defining the theory ********************************************************
@@ -310,6 +314,7 @@ initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA
 
 if __name__ == '__main__':
 
+    
     if MULTIPROCESSING:
         # Create a multiprocessing pool
         with Pool(processes = PROCESSES) as pool:
@@ -330,3 +335,32 @@ if __name__ == '__main__':
         handle=handle,
         primordialfeature_model = primordialfeature_model,
         save_chi2=True)
+
+    if args.postprocess:
+        FREQ_BIN = int(os.getenv('FREQ_BIN'))
+        BINNING_AXIS = mcmc.id_map['omega']
+
+        # Directories and filenames
+        f_bare = mcmc.chain_file_paths[0].split('_Run_')[0]
+        freqs = [[OMEGA_MIN, OMEGA_MAX]]
+
+        # Number of chains to load
+        n = mcmc.gelman_rubin.get('N')
+
+        #File paths
+        f_total_chain = f_bare + '_combined.h5'
+        f_binned_chain = f_bare + '_binned.h5'
+        f_analysis = f_bare + '_analysis.h5'
+        
+        print(f_total_chain)
+        print(f_binned_chain)
+        print(f_analysis)
+
+        # Process chains
+        pp.get_total_chain(f_bare, f_total_chain, n, burnin_frac=0.3, thin=10)
+        pp.BinnedChain([f_total_chain], 
+                       freqs, 
+                       f_binned_chain, 
+                       binning_axis=BINNING_AXIS, 
+                       freq_bin=FREQ_BIN)
+        pp.compute_statistics(f_binned_chain, f_analysis)
