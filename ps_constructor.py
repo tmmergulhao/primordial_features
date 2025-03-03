@@ -1,8 +1,8 @@
 import numpy as np
 from mcfit import P2xi, xi2P
 from scipy.interpolate import InterpolatedUnivariateSpline
-import sys
-
+import sys 
+from data_handling import read_bingo_results, deltaPfeature_bump, create_interpolation_function_bump, deltaPfeature_cpsc, create_interpolation_function_cpsc
 class PowerSpectrumConstructor:
     def __init__(self, ps_filename, model, k_array):
         """
@@ -16,8 +16,10 @@ class PowerSpectrumConstructor:
                 - 'log'
                 - 'step'
                 - 'sound'
+                #Matteo's contribution
+                - 'bump'
+                - 'cpsc'
                 - 'None' (i.e., usual BAO analysis without primordial features)
-                - 'external' (for external primordial features)
         
         Raises:
             ValueError: If the model is not one of the valid options.
@@ -31,7 +33,7 @@ class PowerSpectrumConstructor:
             sys.exit(-1)
 
         # Implemented feature models
-        valid_options = {'lin', 'log', 'sound', 'step', 'None','external'}
+        valid_options = {'lin', 'log', 'sound', 'step', 'bump','cpsc','None','external'}
 
         if model not in valid_options:
             raise ValueError(f"Invalid model '{model}'. Please choose one of: {', '.join(valid_options)}")
@@ -67,6 +69,9 @@ class PowerSpectrumConstructor:
             'log': self.LogarithmicFeatures_deltaP,
             'sound': self.VaryingSpeedOfSound_deltaP,
             'step': self.StepInPotential_deltaP,
+            #Matteo
+            'bump': self.BumpInPotential_deltaP,
+            'cpsc': self.CPSC_deltaP,
             'None': lambda _: 0,
         }
     
@@ -213,6 +218,55 @@ class PowerSpectrumConstructor:
         delta_P = deltaI0 + I1**2 + I1**2 * deltaI0
         return delta_P
 
+    #Matteo
+    def BumpInPotential_deltaP(self, _k, params):
+        """
+        Compute the delta power spectrum for the 'bump' model.
+        The calculation is performed numerically by solving the MS equation using the code BINGO, then interpolated.
+
+        Args:
+            params (list): List of parameters [deltaN, N0, dP].
+
+        Returns:
+            array-like: The delta power spectrum.
+        """
+        filename = 'cosmologies/bingo_results_bump.h5'
+    
+        # Read data from the file
+        k_values, deltaN_values, deltaP_values = read_bingo_results(filename)
+    
+        # Create the interpolation function
+        interp_func = create_interpolation_function_bump(k_values, deltaN_values, deltaP_values)
+        
+        # Unpack the primordial features parameters
+        dP, N0, deltaN = params
+
+        return deltaPfeature_bump(_k  * self.h,  dP, N0, deltaN, interp_func)
+        
+    def CPSC_deltaP(self, _k, params):
+        """
+        Compute the delta power spectrum for the 'cpsc' model.
+        The calculation is performed numerically by solving the MS equation using the code BINGO, then interpolated.
+
+        Args:
+            params (list): List of parameters [log10_m_ver_h, N0, dP].
+
+        Returns:
+            array-like: The delta power spectrum.
+        """
+        filename = 'cosmologies/bingo_results_cpsc.h5'
+    
+        # Read data from the file
+        k_values, log10_m_over_H_values, deltaP_values = read_bingo_results(filename)
+    
+        # Create the interpolation function
+        interp_func = create_interpolation_function_cpsc(k_values, log10_m_over_H_values, deltaP_values)
+
+        # Unpack the primordial features parameters
+        dP, N0, log10_m_over_H = params
+
+        return deltaPfeature_cpsc(_k  * self.h,  dP, N0, log10_m_over_H, interp_func)
+#########################################################################################################    
     def BAO(self, _k, alpha):
         """
         Compute the BAO oscillations.
