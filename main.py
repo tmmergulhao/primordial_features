@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridSpec
 from plot_results import *
 import postprocessing as pp
-
 #########################################LOADING THE DATA###########################################
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
@@ -216,6 +215,7 @@ if args.debug:
         "min_length":200,
         "convergence_steps":10
     })
+    
 #********************** Defining the theory ********************************************************
 # The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
 # of NGC and SGC are different, they will have different window functions. It means that we will
@@ -228,7 +228,6 @@ if args.debug:
 #       iii) Compute the theory for NGC and SGC
 #
 #       iv) Concatenate the result from the step above and compare with data.
-
 
 # Initialize the model for NGC
 ps_model_NGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
