@@ -1,34 +1,30 @@
-# main.py
 import numpy as np
 import ps_constructor
 import likelihood
 import mcmc_toolkit
 import argparse
 import logging
-import json
 import sys,os
-from scipy.interpolate import interp1d
 from scipy.interpolate import InterpolatedUnivariateSpline
 from multiprocessing import Pool
 from dotenv import load_dotenv
 import data_handling
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridSpec
 from plot_results import *
 import postprocessing as pp
 #########################################LOADING THE DATA###########################################
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
-parser.add_argument('--env', type=str, required=True, help='Path to the .env file for the analysis setup')
+parser.add_argument('--data_env', type=str, required=True, help='Path to the .env file for the data')
+parser.add_argument('--sampler_env', type=str, required=True, help='Path to the .env file for the sampling setup')
+parser.add_argument('--mock', type=int, required=True, help='What mock to use. Set -1 for data, and 0,1,2,... for mocks')
+parser.add_argument('--machine', type =str,required=True)
+parser.add_argument('--reconstruction',default=True, type=str, required=True, help='Whether to use the reconstructed power spectrum')
 parser.add_argument('--omega_min', type=float, required=False, help='Minimum value of omega')
 parser.add_argument('--omega_max', type=float, required=False, help='Maximum value of omega')
-parser.add_argument('--mock', type=int, required=True, help='What mock to use')
 parser.add_argument('--handle', type=str, required=False, help='Add a prefix to the chains and log file')
-parser.add_argument('--machine', type =str,required=True)
 parser.add_argument('--processess', type=int, required=False, help='Number of processes to use')
 parser.add_argument('--debug',default=False, type=bool, required=False, help='Number of processes to use')
 parser.add_argument('--postprocess',default=True, type=bool, required=False, help='Post process the chains')
-
 args = parser.parse_args()
 
 #Load the paths
@@ -40,7 +36,8 @@ FIG_DIR = PATHS['FIG_DIR']
 CHAIN_DIR = PATHS['CHAIN_DIR']
 
 # Load the environment variables
-load_dotenv(args.env)
+load_dotenv(args.data_env)
+load_dotenv(args.sampler_env)
 
 # The frequency range to be scanned
 if args.omega_min and args.omega_max:
@@ -50,51 +47,61 @@ if args.omega_min and args.omega_max:
 else:
     FREQS = False
 
+################################ Reading the analysis Specs ########################################
+if args.mock <0:
+    DATA_FLAG = True
+    suffix = "DATA"
+else:
+    DATA_FLAG = False
+    suffix = "MOCK"
+
+reconstruction_flag = str(args.reconstruction).lower() in ['true', '1', 'yes']
+data_mode = "POST" if reconstruction_flag else "PRE"
+
+# Construct the keys for NGC and SGC for both data and covariance files
+data_ngc_key = f"PK_NGC_{data_mode}_{suffix}"
+data_sgc_key = f"PK_SGC_{data_mode}_{suffix}"
+cov_ngc_key  = f"COV_NGC_{data_mode}"
+cov_sgc_key  = f"COV_SGC_{data_mode}"
+
+# Retrieve the paths from the environment
+DATA_NGC_file = os.getenv(data_ngc_key).format(args.mock)
+DATA_SGC_file = os.getenv(data_sgc_key).format(args.mock)
+COV_NGC_file  = os.getenv(cov_ngc_key)
+COV_SGC_file  = os.getenv(cov_sgc_key)
+DATA_NGC_file = os.path.join(DATA_DIR, DATA_NGC_file)
+DATA_SGC_file = os.path.join(DATA_DIR, DATA_SGC_file)
+COV_NGC_file = os.path.join(DATA_DIR, COV_NGC_file)
+COV_SGC_file = os.path.join(DATA_DIR, COV_SGC_file)
+
 # Get the prior
 prior_name = os.getenv('PRIOR_NAME')
 prior_file = os.path.join(MAIN_DIR, 'priors', prior_name)
 
 #Set the chains folder
-CHAIN_FOLDER = os.getenv('CHAIN_FOLDER')
+OUT_FOLDER = os.getenv('OUT_FOLDER')
+if DATA_FLAG:
+    OUT_FOLDER = os.path.join(OUT_FOLDER, 'DATA')
+else:
+    OUT_FOLDER = os.path.join(OUT_FOLDER, f'MOCK_{args.mock}')
 
 if FREQS:
-    CHAIN_PATH = os.path.join(CHAIN_DIR, CHAIN_FOLDER, prior_name, f'{OMEGA_MIN}_{OMEGA_MAX}')
+    CHAIN_PATH = os.path.join(CHAIN_DIR, OUT_FOLDER, prior_name, f'{OMEGA_MIN}_{OMEGA_MAX}')
 else:
-    CHAIN_PATH = os.path.join(CHAIN_DIR, CHAIN_FOLDER, prior_name)
+    CHAIN_PATH = os.path.join(CHAIN_DIR, OUT_FOLDER, prior_name)
 
 #Set the Figures folder
-FIG_FOLDER = os.getenv('FIG_FOLDER')
 if FREQS:
-    FIG_PATH = os.path.join(FIG_DIR, FIG_FOLDER, prior_name, f'{OMEGA_MIN}_{OMEGA_MAX}')
+    FIG_PATH = os.path.join(FIG_DIR, OUT_FOLDER, prior_name, f'{OMEGA_MIN}_{OMEGA_MAX}')
 else:
-    FIG_PATH = os.path.join(FIG_DIR, FIG_FOLDER, prior_name)
-
-# Load environment variables from the specified .env file
-load_dotenv(args.env)
+    FIG_PATH = os.path.join(FIG_DIR, OUT_FOLDER, prior_name)
 
 # Whether or not to use multiprocessing
 MULTIPROCESSING = os.getenv('MULTIPROCESSING')
 PROCESSES = int(os.getenv('PROCESSES'))
+
 if args.processess:
     PROCESSES = args.processess
-
-# Load the data products
-if args.mock <0:
-    DATA_FLAG = True
-else:
-    DATA_FLAG = False
-
-DATA_NGC_file = os.getenv('DATA_NGC').format(args.mock)
-DATA_NGC_file = os.path.join(DATA_DIR, DATA_NGC_file)
-
-DATA_SGC_file = os.getenv('DATA_SGC').format(args.mock)
-DATA_SGC_file = os.path.join(DATA_DIR, DATA_SGC_file)
-
-COV_NGC_file = os.getenv('COV_NGC')
-COV_NGC_file = os.path.join(DATA_DIR, COV_NGC_file)
-
-COV_SGC_file = os.getenv('COV_SGC')
-COV_SGC_file = os.path.join(DATA_DIR, COV_SGC_file)
 
 fn_wf_ngc = os.getenv('FN_WF_NGC')
 if fn_wf_ngc is not None:
@@ -129,6 +136,7 @@ gelman_rubin = {
         "min_length":GELMAN_MIN,
         "convergence_steps":GELMAN_CONV_STEPS
     }
+
 #########################################PREPARING THE DATA#########################################
 # Load the window functions
 if fn_wf_ngc is not None:
@@ -158,7 +166,7 @@ Nb = len(k)
 invCOV *= (Nmocks-Nb-2)/(Nmocks-1)
 
 # Create the name of the data file
-data_label = args.env.split('/')[-1].split('.')[0]
+data_label = args.data_env.split('/')[-1].split('.')[0]
 
 if DATA_FLAG:
     prefix = "DATA"
@@ -166,8 +174,7 @@ else:
     prefix = f"MOCK_{args.mock}"
 
 suffix = f"_{OMEGA_MIN}_{OMEGA_MAX}" if FREQS else ""
-
-common_name = f"{prefix}_{data_label}_{prior_name}{suffix}"
+common_name = f"{prefix}_{data_mode}_{data_label}_{prior_name}{suffix}"
 
 if args.handle:
     handle_log = f"{args.handle}_{common_name}.log"
@@ -210,11 +217,13 @@ mcmc.set_gelman_rubin(gelman_rubin)
 
 if args.debug:
     mcmc.set_gelman_rubin({
-        "N":2,
+        "N":1,
         "epsilon":10,
-        "min_length":200,
+        "min_length":1000,
         "convergence_steps":10
     })
+    fn_wf_ngc = None
+    fn_wf_sgc = None
     
 #********************** Defining the theory ********************************************************
 # The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
