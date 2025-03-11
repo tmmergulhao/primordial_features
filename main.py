@@ -136,7 +136,7 @@ gelman_rubin = {
         "min_length":GELMAN_MIN,
         "convergence_steps":GELMAN_CONV_STEPS
     }
-
+    
 #########################################PREPARING THE DATA#########################################
 # Load the window functions
 if fn_wf_ngc is not None:
