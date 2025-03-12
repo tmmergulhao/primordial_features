@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import data_handling
 from plot_results import *
 import postprocessing as pp
+
 #########################################LOADING THE DATA###########################################
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Run MCMC analysis with different setups.')
@@ -183,8 +184,14 @@ else:
     handle_log = f"{common_name}.log"
     handle = common_name
 
-# Create the log file
-logging.basicConfig(filename='log/'+handle, level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Construct the log file path inside the chains directory
+log_filename = os.path.join(CHAIN_PATH, f"{handle}.log")
+os.makedirs(os.path.dirname(log_filename), exist_ok=True)
+
+# Configure the logger to use the new log file path
+logging.basicConfig(filename=log_filename,
+                    level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Log the variables
