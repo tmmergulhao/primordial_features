@@ -188,12 +188,35 @@ else:
 log_filename = os.path.join(CHAIN_PATH, f"{handle}.log")
 os.makedirs(os.path.dirname(log_filename), exist_ok=True)
 
+# Configure logging based on how the file is executed
+if __name__ == '__main__':
+    
+    # When imported, log to a file
+    log_filename = 'your_log_file.log'
+    logging.basicConfig(
+        filename=log_filename,
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+else:
+    # When running directly, log to stdout (e.g., in a Jupyter Notebook or terminal)
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+
+logger = logging.getLogger(__name__)
+
+"""
 # Configure the logger to use the new log file path
 logging.basicConfig(filename=log_filename,
                     level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
+"""
 # Log the variables
 logger.info(f'Processes: {PROCESSES}')
 logger.info(f'DATA NGC file: {DATA_NGC_file}')
@@ -234,18 +257,6 @@ if args.debug:
     fn_wf_sgc = None
     
 #********************** Defining the theory ********************************************************
-# The data space has dimension 2*dim(k), since we jointly analyse NGC and SGC. Since the geomentry
-# of NGC and SGC are different, they will have different window functions. It means that we will
-# need to convolve the NGC and SGC separately. It can be done in the following way:
-#       i)The total parameter space will have dimensions that are exclusive to a galaxy cap and
-#        shared ones.
-#        
-#       ii)For a given input theta, we will split it into theta_NGC and theta SGC.
-#
-#       iii) Compute the theory for NGC and SGC
-#
-#       iv) Concatenate the result from the step above and compare with data.
-
 # Initialize the model for NGC
 ps_model_NGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
 
@@ -330,7 +341,6 @@ initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA
 
 if __name__ == '__main__':
 
-    
     if MULTIPROCESSING:
         # Create a multiprocessing pool
         with Pool(processes = PROCESSES) as pool:
