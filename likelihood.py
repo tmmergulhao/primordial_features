@@ -51,3 +51,22 @@ class likelihoods:
         assert len(theory_result) == len(self.data), f"Data and theory with different shape: data: {len(self.data)}, theory: {len(theory_result)}"
         diff = theory_result - self.data
         return QuadraticForm(diff, diff, self.invcov)
+
+    def set_data(self, data: np.ndarray):
+        """
+        Set the data for the likelihood.
+
+        Parameters:
+        data (np.ndarray): The data to set.
+        """
+        self.data = data
+
+
+    def set_cov(self, cov: np.ndarray):
+        """
+        Set the covariance matrix for the likelihood.
+
+        Parameters:
+        cov (np.ndarray): The covariance matrix to set.
+        """
+        self.invcov = np.linalg.inv(cov)
