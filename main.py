@@ -26,6 +26,7 @@ parser.add_argument('--handle', type=str, required=False, help='Add a prefix to 
 parser.add_argument('--processess', type=int, required=False, help='Number of processes to use')
 parser.add_argument('--debug',default=False, type=bool, required=False, help='Number of processes to use')
 parser.add_argument('--postprocess',default=True, type=bool, required=False, help='Post process the chains')
+parser.add_argument('--run',default=True, type=str, required=False, help='Run the chain')
 args = parser.parse_args()
 
 #Load the paths
@@ -57,6 +58,8 @@ else:
     suffix = "MOCK"
 
 reconstruction_flag = str(args.reconstruction).lower() in ['true', '1', 'yes']
+print(str(args.run).lower())
+run_chain_flag = str(args.run).lower() in ['true', '1', 'yes']
 data_mode = "POST" if reconstruction_flag else "PRE"
 
 # Construct the keys for NGC and SGC for both data and covariance files
@@ -338,15 +341,15 @@ mcmc.change_fig_dir(FIG_PATH)
 
 #Create the initial positions
 initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA) for _ in range(mcmc.gelman_rubin['N'])]
-
 if __name__ == '__main__':
 
-    if MULTIPROCESSING:
-        # Create a multiprocessing pool
-        with Pool(processes = PROCESSES) as pool:
-            #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
-            mcmc.run(handle, 0, initial_positions, logposterior, pool=pool, 
-            gelman_rubin=True)
+    if run_chain_flag:
+        if MULTIPROCESSING:
+            # Create a multiprocessing pool
+            with Pool(processes = PROCESSES) as pool:
+                #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
+                mcmc.run(handle, 1, initial_positions, logposterior, pool=pool, 
+                gelman_rubin=True, new=True)
 
     # After MCMC chains converge
     plot_results(
@@ -361,13 +364,14 @@ if __name__ == '__main__':
         handle=handle,
         primordialfeature_model = primordialfeature_model,
         save_chi2=True)
-
+    
     if args.postprocess:
         FREQ_BIN = int(os.getenv('FREQ_BIN'))
         BINNING_AXIS = mcmc.id_map['omega']
 
         # Directories and filenames
-        f_bare = mcmc.chain_file_paths[0].split('_Run_')[0]
+        #f_bare = mcmc.chain_file_paths[0].split('_Run_')[0]
+        f_bare = mcmc.generate_chain_file_paths(handle,gelman_rubin)[0].split('_Run_')[0]
         freqs = [[OMEGA_MIN, OMEGA_MAX]]
 
         # Number of chains to load
