@@ -17,7 +17,6 @@ parser.add_argument('--omega_min', required=True, type=float, help="Minimum omeg
 parser.add_argument('--omega_max', required=True, type=float, help="Maximum omega value.")
 args = parser.parse_args()
 
-# **Set sys.argv manually before importing main.py**
 import sys
 sys.argv = [
     'main.py',
@@ -33,7 +32,7 @@ sys.argv = [
 from main import *
 
 # Read the frequency bin size from the environment variable
-freq_bin = int(os.getenv('FREQ_BIN', 10))  # Default to 10 if not set
+freq_bin = int(os.getenv('FREQ_BIN'))  # Default to 10 if not set
 
 # Extract values from parsed arguments
 omega_min = args.omega_min
@@ -53,10 +52,8 @@ results = []
 pf_limits = [(a, b) for a, b in zip(mcmc.prior_bounds[0], mcmc.prior_bounds[1])]
 
 def run_fit(f):
-    """Run Minuit fit for a given frequency bin."""
-    print(f)
     omega_bin_center = f + freq_bin / 2.0
-
+    logger.info(f"Running Minuit fit for frequency bin {omega_bin_center:.2f}...")
     # Initial guess for minimization
     PF_guess = np.array([2,2,0,0,0,0,0,1,3,3,0,omega_bin_center,0.25])
 
@@ -87,7 +84,7 @@ if __name__ == "__main__":
     out_file = CHAIN_PATH+"/minuit_fit_results.json"
 
     with Pool(processes=5) as pool:
-        results = list(pool.imap(run_fit, bins), total=len(bins))
+        results = list(pool.imap(run_fit, bins))
 
     # Save the results to the specified output file
     with open(out_file, 'w') as outfile:

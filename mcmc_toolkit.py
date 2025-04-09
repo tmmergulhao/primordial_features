@@ -635,6 +635,26 @@ class MCMC:
                 self.plot_corner(handle=name, gelman_rubin=gelman_rubin, save=f'{name}_Corner')
                 self.logger.info('Done!')
 
+
+    def generate_chain_file_paths(self, handle: str, gelman: Optional[Dict] = None) -> List[str]:
+        """
+        Generate file paths for the MCMC chain files.
+
+        Args:
+            handle (str): Handle used in the MCMC analysis.
+            gelman (Dict, optional): Dictionary used as input for the Gelman-Rubin convergence 
+            criteria. Defaults to None.
+
+        Returns:
+            List[str]: List of file paths for the chain files.
+        """
+        if gelman is not None:
+            N_chains = gelman['N']
+            return [os.path.join(self.chain_dir, f'{handle}_Run_{i}.h5') for i in range(N_chains)]
+        else:
+            return [os.path.join(self.chain_dir, f'{handle}.h5')]
+        
+        
     def get_chain(self, handle: str, gelman: Optional[Dict] = None) -> np.ndarray:
             """
             Retrieve the MCMC chain.
