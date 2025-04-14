@@ -27,6 +27,7 @@ parser.add_argument('--processess', type=int, required=False, help='Number of pr
 parser.add_argument('--debug',default=False, type=bool, required=False, help='Number of processes to use')
 parser.add_argument('--postprocess',default=True, type=bool, required=False, help='Post process the chains')
 parser.add_argument('--run',default=True, type=str, required=False, help='Run the chain')
+parser.add_argument('--EZMOCK',default=False, type=str, required=False, help='Whether to use EZMocks')
 args = parser.parse_args()
 
 #Load the paths
@@ -60,11 +61,18 @@ else:
 reconstruction_flag = str(args.reconstruction).lower() in ['true', '1', 'yes']
 print(str(args.run).lower())
 run_chain_flag = str(args.run).lower() in ['true', '1', 'yes']
+EZMOCK_flag = str(args.EZMOCK).lower() in ['true', '1', 'yes']
+
 data_mode = "POST" if reconstruction_flag else "PRE"
 
 # Construct the keys for NGC and SGC for both data and covariance files
-data_ngc_key = f"PK_NGC_{data_mode}_{suffix}"
-data_sgc_key = f"PK_SGC_{data_mode}_{suffix}"
+if EZMOCK_flag:
+    data_ngc_key = f"PK_NGC_{data_mode}_EZ{suffix}"
+    data_sgc_key = f"PK_SGC_{data_mode}_EZ{suffix}"
+else:
+    data_ngc_key = f"PK_NGC_{data_mode}_{suffix}"
+    data_sgc_key = f"PK_SGC_{data_mode}_{suffix}"
+    
 cov_ngc_key  = f"COV_NGC_{data_mode}"
 cov_sgc_key  = f"COV_SGC_{data_mode}"
 
@@ -297,9 +305,9 @@ PrimordialFeature_likelihood = likelihood.likelihoods(theory, DATA, invCOV)
 mcmc.set_walkers(nwalkers_per_param * mcmc.ndim)
 
 if primordialfeature_model != 'None':
-    mcmc.prior_bounds[0][11] = OMEGA_MIN
-    mcmc.prior_bounds[1][11] = OMEGA_MAX
-
+    mcmc.prior_bounds[0][mcmc.id_map['omega']] = OMEGA_MIN
+    mcmc.prior_bounds[1][mcmc.id_map['omega']] = OMEGA_MAX
+    
 in_prior_range = mcmc.in_prior
 
 # Log the Gelman-Rubin convergence criteria
@@ -349,21 +357,24 @@ if __name__ == '__main__':
             with Pool(processes = PROCESSES) as pool:
                 #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
                 mcmc.run(handle, 1, initial_positions, logposterior, pool=pool, 
-                gelman_rubin=True, new=True)
+                gelman_rubin=True, new=True, plots=True)
 
     # After MCMC chains converge
-    plot_results(
-        mcmc=mcmc,
-        likelihood=PrimordialFeature_likelihood,
-        theory=theory,
-        DATA=DATA,
-        COV_NGC=COV_NGC,
-        COV_SGC=COV_SGC,
-        k=k,
-        FIG_PATH=FIG_PATH,
-        handle=handle,
-        primordialfeature_model = primordialfeature_model,
-        save_chi2=True)
+    try:
+        plot_results(
+            mcmc=mcmc,
+            likelihood=PrimordialFeature_likelihood,
+            theory=theory,
+            DATA=DATA,
+            COV_NGC=COV_NGC,
+            COV_SGC=COV_SGC,
+            k=k,
+            FIG_PATH=FIG_PATH,
+            handle=handle,
+            primordialfeature_model = primordialfeature_model,
+            save_chi2=True)
+    except: 
+        pass
     
     if args.postprocess:
         FREQ_BIN = int(os.getenv('FREQ_BIN'))

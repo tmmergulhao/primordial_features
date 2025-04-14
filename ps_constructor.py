@@ -58,7 +58,7 @@ class PowerSpectrumConstructor:
         self.k_norm = 0.05 / self.h  # [h/Mpc]
 
         # Array for the Hankel transform
-        self.kh_ext = np.logspace(-4, np.log10(10), 2**12)
+        self.kh_ext = np.logspace(-4, np.log10(10), 2**14)
 
         # Array to evaluate the theory
         self.k = k_array
