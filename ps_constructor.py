@@ -147,7 +147,7 @@ class PowerSpectrumConstructor:
             array-like: The delta power spectrum.
         """
         # Unpack the primordial features parameters
-        tau_f, log_beta, As = params
+        As, tau_f, log_beta = params
 
         tau_f = -tau_f * self.h
         kd = np.exp(log_beta)**0.5 / tau_f
@@ -197,13 +197,13 @@ class PowerSpectrumConstructor:
         Compute the delta power spectrum for the 'step' model.
 
         Args:
-            params (list): List of parameters [omegas, xs, As].
+            params (list): List of parameters [As, omegas, xs].
 
         Returns:
             array-like: The delta power spectrum.
         """
         # Unpack the primordial features parameters
-        omegas, xs, As = params
+        As, omegas, xs = params
 
         x = _k * omegas
         D_arg = x / xs
