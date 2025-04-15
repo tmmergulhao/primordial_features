@@ -203,7 +203,7 @@ os.makedirs(os.path.dirname(log_filename), exist_ok=True)
 if __name__ == '__main__':
     
     # When imported, log to a file
-    log_filename = 'your_log_file.log'
+    log_filename = log_filename
     logging.basicConfig(
         filename=log_filename,
         level=logging.INFO,
