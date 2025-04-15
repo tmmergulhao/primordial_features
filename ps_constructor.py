@@ -151,10 +151,10 @@ class PowerSpectrumConstructor:
 
         tau_f = -tau_f * self.h
         kd = np.exp(log_beta)**0.5 / tau_f
-        osc1 = np.sin(2 * tau_f * _k) + 1 / (tau_f * self.kh_ext) * np.cos(2 * tau_f * self.kh_ext)
-        osc2 = -0.5 / (tau_f**2 * self.kh_ext) * np.sin(2 * tau_f * self.kh_ext)
-        Dk = As * np.exp(-self.kh_ext**2 / kd**2) * self.kh_ext * np.sqrt(np.pi) / (9 * kd)
-        d_Dk = (As / (9 * kd**3)) * np.exp(-self.kh_ext**2 / kd**2) * (kd**2 - 2 * self.kh_ext**2) * np.sqrt(np.pi)
+        osc1 = np.sin(2 * tau_f * _k) + 1 / (tau_f * _k) * np.cos(2 * tau_f * _k)
+        osc2 = -0.5 / (tau_f**2 * _k) * np.sin(2 * tau_f * _k)
+        Dk = As * np.exp(-_k**2 / kd**2) * _k * np.sqrt(np.pi) / (9 * kd)
+        d_Dk = (As / (9 * kd**3)) * np.exp(-_k**2 / kd**2) * (kd**2 - 2 * _k**2) * np.sqrt(np.pi)
         delta_P = osc1 * Dk + osc2 * d_Dk
         return delta_P
 
