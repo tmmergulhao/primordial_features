@@ -61,6 +61,7 @@ else:
 reconstruction_flag = str(args.reconstruction).lower() in ['true', '1', 'yes']
 run_chain_flag = str(args.run).lower() in ['true', '1', 'yes']
 EZMOCK_flag = str(args.EZMOCK).lower() in ['true', '1', 'yes']
+debug_flag = str(args.debug).lower() in ['true', '1', 'yes']
 
 data_mode = "POST" if reconstruction_flag else "PRE"
 
@@ -263,7 +264,7 @@ ndim_SGC = len(mcmc.input_prior['SGC'])
 #Gelman Rubin convergence criteria
 mcmc.set_gelman_rubin(gelman_rubin)
 
-if args.debug:
+if debug_flag:
     mcmc.set_gelman_rubin({
         "N":1,
         "epsilon":10,
@@ -283,11 +284,12 @@ ps_model_SGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_m
 if (fn_wf_ngc is None) or (fn_wf_sgc is None): #No window function convolution
     theory_NGC = lambda x: ps_model_NGC.Evaluate_bare(x)
     theory_SGC = lambda x: ps_model_SGC.Evaluate_bare(x)
+    print('not passed')
 
 else: #Convolve the theory with the window function
     ps_model_NGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_NGC[0],wfunc_NGC[1],ext=3))
     theory_NGC = lambda x: ps_model_NGC.Evaluate_wincov(x)
-
+    print('passed')
     ps_model_SGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_SGC[0],wfunc_SGC[1],ext=3))
     theory_SGC = lambda x: ps_model_SGC.Evaluate_wincov(x)
 
