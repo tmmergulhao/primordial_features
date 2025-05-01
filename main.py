@@ -284,12 +284,11 @@ ps_model_SGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_m
 if (fn_wf_ngc is None) or (fn_wf_sgc is None): #No window function convolution
     theory_NGC = lambda x: ps_model_NGC.Evaluate_bare(x)
     theory_SGC = lambda x: ps_model_SGC.Evaluate_bare(x)
-    print('not passed')
 
 else: #Convolve the theory with the window function
     ps_model_NGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_NGC[0],wfunc_NGC[1],ext=3))
     theory_NGC = lambda x: ps_model_NGC.Evaluate_wincov(x)
-    print('passed')
+
     ps_model_SGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_SGC[0],wfunc_SGC[1],ext=3))
     theory_SGC = lambda x: ps_model_SGC.Evaluate_wincov(x)
 
