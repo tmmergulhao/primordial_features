@@ -59,7 +59,6 @@ else:
     suffix = "MOCK"
 
 reconstruction_flag = str(args.reconstruction).lower() in ['true', '1', 'yes']
-print(str(args.run).lower())
 run_chain_flag = str(args.run).lower() in ['true', '1', 'yes']
 EZMOCK_flag = str(args.EZMOCK).lower() in ['true', '1', 'yes']
 
@@ -163,8 +162,15 @@ if fn_wf_sgc is not None:
 
 # Load the k-array and apply the mask
 data_processor = data_handling.DataProcessor(KMIN, KMAX)
-k,DATA_NGC = data_processor.load_data(DATA_NGC_file)
-k,DATA_SGC = data_processor.load_data(DATA_SGC_file)
+
+#adjust the skip value depending on the file
+if 'boss' not in DATA_NGC_file.lower():
+    skip = 24
+else:
+    skip = 33
+
+k,DATA_NGC = data_processor.load_data(DATA_NGC_file, skip=skip)
+k,DATA_SGC = data_processor.load_data(DATA_SGC_file, skip=skip)
 DATA = np.concatenate((DATA_NGC, DATA_SGC))
 
 COV_NGC = data_processor.load_cov(COV_NGC_file)

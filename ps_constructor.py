@@ -74,6 +74,17 @@ class PowerSpectrumConstructor:
             'cpsc': self.CPSC_deltaP,
             'None': lambda _: 0,
         }
+
+        if self.model == 'cpsc':
+            filename = 'cosmologies/bingo_results_cpsc.h5'
+
+            # Read data from the file
+            k_values, log10_m_over_H_values, deltaP_values = read_bingo_results(filename)
+
+            # Create the interpolation function
+            interp_func = create_interpolation_function_cpsc(k_values, log10_m_over_H_values, deltaP_values)
+
+            self.CPSC_interp = interp_func
     
     def external_deltaP(self, func):
         self.PrimordialFeatureModels['external'] = func
@@ -242,7 +253,7 @@ class PowerSpectrumConstructor:
         dP, N0, deltaN = params
 
         return deltaPfeature_bump(_k  * self.h,  dP, N0, deltaN, interp_func)
-        
+    
     def CPSC_deltaP(self, _k, params):
         """
         Compute the delta power spectrum for the 'cpsc' model.
@@ -254,18 +265,19 @@ class PowerSpectrumConstructor:
         Returns:
             array-like: The delta power spectrum.
         """
-        filename = 'cosmologies/bingo_results_cpsc.h5'
-    
-        # Read data from the file
-        k_values, log10_m_over_H_values, deltaP_values = read_bingo_results(filename)
-    
-        # Create the interpolation function
-        interp_func = create_interpolation_function_cpsc(k_values, log10_m_over_H_values, deltaP_values)
-
+        
         # Unpack the primordial features parameters
         dP, N0, log10_m_over_H = params
 
-        return deltaPfeature_cpsc(_k  * self.h,  dP, N0, log10_m_over_H, interp_func)
+        # Amplitude modulation term
+        Amp = dP / 0.01
+        
+        arg = _k / np.exp(N0-0.135036080469101E+002) * self.h
+
+        # Interpolate deltaP using the interpolation function
+        deltaP = Amp*self.CPSC_interp(np.log10(arg), log10_m_over_H, grid=False)
+        return Amp * deltaP
+    
 #########################################################################################################    
     def BAO(self, _k, alpha):
         """
