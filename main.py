@@ -166,13 +166,13 @@ data_processor = data_handling.DataProcessor(KMIN, KMAX)
 
 #adjust the skip value depending on the file
 if 'boss' not in DATA_NGC_file.lower():
-    skip = 24
+    k,DATA_NGC = data_processor.load_data_DESI(DATA_NGC_file)
+    k,DATA_SGC = data_processor.load_data_DESI(DATA_SGC_file)
+    DATA = np.concatenate((DATA_NGC, DATA_SGC))
 else:
-    skip = 33
-
-k,DATA_NGC = data_processor.load_data(DATA_NGC_file, skip=skip)
-k,DATA_SGC = data_processor.load_data(DATA_SGC_file, skip=skip)
-DATA = np.concatenate((DATA_NGC, DATA_SGC))
+    k,DATA_NGC = data_processor.load_data_BOSS(DATA_NGC_file)
+    k,DATA_SGC = data_processor.load_data_BOSS(DATA_SGC_file)
+    DATA = np.concatenate((DATA_NGC, DATA_SGC))
 
 COV_NGC = data_processor.load_cov(COV_NGC_file)
 COV_SGC = data_processor.load_cov(COV_SGC_file)

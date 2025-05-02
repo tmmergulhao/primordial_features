@@ -16,7 +16,7 @@ class DataProcessor:
         self.kmax = kmax
         self.mask = None  # Placeholder for the mask
 
-    def load_data(self, filename, skip = 24):
+    def load_data_DESI(self, filename):
         """
         Load the data array, apply the filter, and store k, p0, and mask as attributes.
 
@@ -27,8 +27,35 @@ class DataProcessor:
             self.k,self.p0 = np.loadtxt(filename)
             return self.k, self.p0
 
-        data = np.genfromtxt(filename, dtype=complex, skip_header=skip).T
+        data = np.genfromtxt(filename, dtype=complex, skip_header=24).T
         k, p0 = data[1].real, data[3].real
+
+        # Create a mask based on kmin and kmax
+        self.mask = np.ones_like(k, dtype=bool)
+        if self.kmin is not None:
+            self.mask &= (k >= self.kmin)
+        if self.kmax is not None:
+            self.mask &= (k <= self.kmax)
+
+        # Apply the mask
+        self.original_k = k.copy()
+        self.k = k[self.mask]
+        self.p0 = p0[self.mask]
+        return self.k, self.p0
+
+    def load_data_BOSS(self, filename):
+        """
+        Load the data array, apply the filter, and store k, p0, and mask as attributes.
+
+        Args:
+            filename (str): Path to the file.
+        """
+        if 'synthetic' in filename:
+            self.k,self.p0 = np.loadtxt(filename)
+            return self.k, self.p0
+
+        data = np.genfromtxt(filename, dtype=complex, skip_header=33).T
+        k, p0 = data[1].real, data[2].real
 
         # Create a mask based on kmin and kmax
         self.mask = np.ones_like(k, dtype=bool)
