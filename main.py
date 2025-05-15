@@ -28,10 +28,12 @@ parser.add_argument('--debug',default=False, type=bool, required=False, help='Nu
 parser.add_argument('--postprocess',default=True, type=bool, required=False, help='Post process the chains')
 parser.add_argument('--run',default=True, type=str, required=False, help='Run the chain')
 parser.add_argument('--EZMOCK',default=False, type=str, required=False, help='Whether to use EZMocks')
+parser.add_argument('--sampler', default='emcee', type=str, required=False, help='Sampler to use')
 args = parser.parse_args()
 
 #Load the paths
 MACHINE = args.machine
+SAMPLER = args.sampler.lower()
 PATHS = data_handling.load_json_to_dict('paths.json')[MACHINE]
 MAIN_DIR = PATHS['MAIN_DIR']
 DATA_DIR = PATHS['DATA_DIR']
@@ -49,6 +51,9 @@ if args.omega_min and args.omega_max:
     OMEGA_MAX = float(args.omega_max)
 else:
     FREQS = False
+
+if SAMPLER not in ['emcee', 'pocomc']:
+    raise ValueError(f"Invalid sampler: {SAMPLER}. Choose 'emcee' or 'pocomc'.")
 
 ################################ Reading the analysis Specs ########################################
 if args.mock <0:
@@ -276,10 +281,10 @@ if debug_flag:
     
 #********************** Defining the theory ********************************************************
 # Initialize the model for NGC
-ps_model_NGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
+ps_model_NGC = ps_constructor.PowerSpectrumConstructor(k, ps_filename=PLIN, pf_model=primordialfeature_model)
 
 # Initialize the model for SGC
-ps_model_SGC = ps_constructor.PowerSpectrumConstructor(PLIN, primordialfeature_model, k)
+ps_model_SGC = ps_constructor.PowerSpectrumConstructor(k, ps_filename=PLIN, pf_model = primordialfeature_model)
 
 if (fn_wf_ngc is None) or (fn_wf_sgc is None): #No window function convolution
     theory_NGC = lambda x: ps_model_NGC.Evaluate_bare(x)
@@ -287,10 +292,10 @@ if (fn_wf_ngc is None) or (fn_wf_sgc is None): #No window function convolution
 
 else: #Convolve the theory with the window function
     ps_model_NGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_NGC[0],wfunc_NGC[1],ext=3))
-    theory_NGC = lambda x: ps_model_NGC.Evaluate_wincov(x)
+    theory_NGC = lambda x: ps_model_NGC.Evaluate_winconv(x)
 
     ps_model_SGC.DefineWindowFunction(InterpolatedUnivariateSpline(wfunc_SGC[0],wfunc_SGC[1],ext=3))
-    theory_SGC = lambda x: ps_model_SGC.Evaluate_wincov(x)
+    theory_SGC = lambda x: ps_model_SGC.Evaluate_winconv(x)
 
 def theory(theta):
     # Slice theta to get the corresponding values for NGC and SGC
@@ -326,6 +331,9 @@ def logposterior(theta):
         return -np.inf
     else:
         return PrimordialFeature_likelihood.logGaussian(theta)
+    
+def logposterior_no_prior(theta):
+    return PrimordialFeature_likelihood.logGaussian(theta)
 
 if primordialfeature_model != 'None':
     omega_ctr = 0.5*(mcmc.prior_bounds[0][mcmc.id_map['omega']]+mcmc.prior_bounds[1][mcmc.id_map['omega']])
@@ -359,13 +367,49 @@ initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA
 if __name__ == '__main__':
 
     if run_chain_flag:
-        if MULTIPROCESSING:
-            # Create a multiprocessing pool
-            with Pool(processes = PROCESSES) as pool:
-                #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
-                mcmc.run(handle, 1, initial_positions, logposterior, pool=pool, 
-                gelman_rubin=True, new=True, plots=True)
+        if SAMPLER == 'emcee':
+            if MULTIPROCESSING:
+                # Create a multiprocessing pool
+                with Pool(processes = PROCESSES) as pool:
+                    #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
+                    mcmc.run(handle, 1, initial_positions, logposterior, pool=pool, 
+                    gelman_rubin=True, new=True, plots=True)
 
+        if SAMPLER == 'pocomc':
+            import pocomc as pc
+            from scipy.stats import uniform
+
+            loc = mcmc.prior_bounds[0]
+            scale = mcmc.prior_bounds[1] - mcmc.prior_bounds[0]
+            prior = pc.Prior([uniform(loc[i], scale[i]) for i in range(len(loc))])
+            
+            if MULTIPROCESSING:
+                with Pool(processes = PROCESSES) as pool:
+                    sampler = pc.Sampler(
+                    prior=prior,
+                    likelihood=logposterior_no_prior,
+                    vectorize=False,
+                    random_state=0,
+                    n_effective = 800,
+                    n_active = None,
+                    output_dir = CHAIN_DIR,
+                    output_label = handle,
+                    pool = pool
+                    )  
+                    sampler.run()
+            else:
+                sampler = pc.Sampler(
+                    prior=prior,
+                    likelihood=logposterior_no_prior,
+                    vectorize=False,
+                    random_state=0,
+                    n_effective = 800,
+                    n_active = None,
+                    output_dir = CHAIN_DIR,
+                    output_label = handle
+                )  
+                sampler.run()
+  
     # After MCMC chains converge
     try:
         plot_results(

@@ -1,17 +1,25 @@
 import numpy as np
 from mcfit import P2xi, xi2P
-from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
 import sys 
 from data_handling import read_bingo_results, deltaPfeature_bump, create_interpolation_function_bump, deltaPfeature_cpsc, create_interpolation_function_cpsc
+try:
+    from velocileptors.LPT.lpt_rsd_fftw import LPT_RSD
+    from velocileptors.EPT.ept_fullresum_fftw import REPT
+
+except ImportError:
+    print("velocileptor package not found. Please install it to use the LPT model.")
+
 class PowerSpectrumConstructor:
-    def __init__(self, ps_filename, model, k_array):
+    def __init__(self, kh_array, ps_style = 'compressed', pf_model = None, ps_filename = None, 
+                 transfer_function = None, norm = 0.05, h = 0.6736, fz = None, kIR = 0.2):
         """
         Load the file with the products necessary to evaluate the theoretical power spectrum.
 
         Args:
             ps_filename (str): Name of the file containing the momentum array, linear power spectrum,
                                smoothed linear power spectrum, and their ratio (O_lin).
-            model (str): Name of the model to be used. The current options are:
+            pf_model (str): Name of the pf_model to be used. The current options are:
                 - 'lin'
                 - 'log'
                 - 'step'
@@ -21,73 +29,164 @@ class PowerSpectrumConstructor:
                 - 'cpsc'
                 - 'None' (i.e., usual BAO analysis without primordial features)
         
+            ps_style (str): The style of the power spectrum. Default is 'compressed'.
+                - 'compressed': Use the compressed power spectrum as in BOSS + eBOSS work
+                - 'lpt_fixed': Use the LPT power spectrum (velocileptors) with transfer function fixed
+                - 'lpt': Use the LPT power spectrum (velocileptors) with transfer function free (TODO)
+                - 'ept_fixed': Use the EPT power spectrum (velocileptors)
+
+            transfer_function (str): The transfer function to be used. Default is None. Should be provided if ps_style is 'lpt_fixed'            
         Raises:
-            ValueError: If the model is not one of the valid options.
+            ValueError: If the pf_model is not one of the valid options.
         """
-        
-        # Load the file and unpack the data
-        try:
-            power_spec = np.loadtxt(ps_filename)
-        except:
-            print("Problem loading the file:", ps_filename)
+        # Constant used to normalize the broadband terms
+        self.h = h
+        self.k_norm = norm #[1/Mpc]
+        self.kh_norm = norm / self.h  #[h/Mpc]
+
+        # k array for the window function convolution
+        self.kh_ext = np.logspace(-4, np.log10(10), 2**14) #[h/Mpc]
+        self.k_ext = self.kh_ext * self.h  # [1/Mpc]
+
+        #k Array to evaluate the theory (same as data)
+        self.kh = np.array(kh_array) #input is h/Mpc
+        self.k = self.kh*self.h #[1/Mpc]
+
+        # Implemented feature pf_models
+        pf_valid_options = {'lin', 'log', 'sound', 'step', 'bump','cpsc','None','external'}
+        ps_style_options = {'compressed', 'lpt_fixed', 'lpt','ept_fixed'}
+
+        if pf_model not in pf_valid_options:
+            raise ValueError(f"Invalid pf_model '{pf_model}'. Please choose one of: {', '.join(pf_valid_options)}")
+        self.pf_model = pf_model
+
+        if ps_style not in ps_style_options:
+            raise ValueError(f"Invalid ps_style '{ps_style}'. Please choose one of: {', '.join(ps_style_options)}")
+        self.ps_style = ps_style
+
+        if ps_style == "compressed":
+            if ps_filename is None:
+                raise ValueError("power spectrum for the compressed power spectrum must be provided.")
+            self.initialize_compressed(ps_filename)
+            self.Evaluate_bare = self.Evaluate_bare_compressed
+            self.Evaluate_winconv = self.Evaluate_winconv_compressed
+
+        if ps_style == 'lpt_fixed':
+            if transfer_function is None:
+                raise ValueError("Transfer function must be provided for LPT model.")
+            self.initialize_lpt_fixed(transfer_function, fz, kIR)
+            self.Evaluate_bare = self.Evaluate_bare_lpt_fixed
+            self.Evaluate_winconv = None
+
+        if ps_style == 'lpt_free':
+            raise ValueError("Compressed power spectrum style is not implemented yet.")
             sys.exit(-1)
 
-        # Implemented feature models
-        valid_options = {'lin', 'log', 'sound', 'step', 'bump','cpsc','None','external'}
+        if ps_style == 'ept_fixed':
+            if ps_filename is None:
+                raise ValueError("Need to provide a decomposed power spectrum for the EPT model.")
+                sys.exit(-1)
+            self.initialize_ept_fixed(ps_filename, fz)
+            self.Evaluate_bare = self.Evaluate_bare_ept_fixed
+            self.Evaluate_winconv = None
 
-        if model not in valid_options:
-            raise ValueError(f"Invalid model '{model}'. Please choose one of: {', '.join(valid_options)}")
-
-        kh_long, ps_smooth_points, O_lin_points, ps_lin_points = power_spec.T
-        
-        # Store the values in the object
-        self.kh_long = kh_long        
-        self.ps_smooth = InterpolatedUnivariateSpline(kh_long, ps_smooth_points, ext=3)
-        self.O_lin = InterpolatedUnivariateSpline(kh_long, O_lin_points, ext=3)
-        self.ps_lin = InterpolatedUnivariateSpline(kh_long, ps_lin_points, ext=3)
-        self.model = model
-
-        # Constant used to normalize the broadband terms
-        self.P_norm = 1e3  # [Mpc/h]^3
-
-        # Fiducial parameters TODO: change the way it is given as input
-        self.h = 0.6736
-        self.ns = 0.96
-
-        # Normalization for the broadband terms
-        self.k_norm = 0.05 / self.h  # [h/Mpc]
-
-        # Array for the Hankel transform
-        self.kh_ext = np.logspace(-4, np.log10(10), 2**14)
-
-        # Array to evaluate the theory
-        self.k = k_array
-
-        # Map for different models of primordial features
+        # Map for different PF models of primordial features
         self.PrimordialFeatureModels = {
             'lin': self.LinearFeatures_deltaP,
             'log': self.LogarithmicFeatures_deltaP,
             'sound': self.VaryingSpeedOfSound_deltaP,
             'step': self.StepInPotential_deltaP,
-            #Matteo
-            'bump': self.BumpInPotential_deltaP,
-            'cpsc': self.CPSC_deltaP,
             'None': lambda _: 0,
+            #Matteo
+            'bump': self.bump_deltaP,
+            'cpsc': self.CPSC_deltaP,
         }
 
-        if self.model == 'cpsc':
-            filename = 'cosmologies/bingo_results_cpsc.h5'
+        if self.pf_model == 'cpsc':
+            self.initialize_pf_cpsc()
+        
+        if self.pf_model == 'bump':
+            self.initialize_pf_bump()
+            
+    def initialize_ept_fixed(self, ps_filename, fz):
+        try:
+            power_spec = np.loadtxt(ps_filename)
+        except:
+            raise ValueError(f"Problem loading the file: {ps_filename}")
+            sys.exit(-1)
 
-            # Read data from the file
-            k_values, log10_m_over_H_values, deltaP_values = read_bingo_results(filename)
+        kh_long, ps_smooth_points, O_lin_points, _ = power_spec.T
 
-            # Create the interpolation function
-            interp_func = create_interpolation_function_cpsc(k_values, log10_m_over_H_values, deltaP_values)
+        # Store the values in the object
+        kh_long = kh_long        
+        self.ps_smooth = InterpolatedUnivariateSpline(kh_long, ps_smooth_points, ext=3)
+        self.O_lin = InterpolatedUnivariateSpline(kh_long, O_lin_points, ext=3)
+        self.fz = fz
+    def initialize_pf_cpsc(self):
+        filename = 'cosmologies/bingo_results_cpsc.h5'
 
-            self.CPSC_interp = interp_func
-    
-    def external_deltaP(self, func):
-        self.PrimordialFeatureModels['external'] = func
+        # Read data from the file
+        k_values, log10_m_over_H_values, deltaP_values = read_bingo_results(filename)
+
+        # Create the interpolation function
+        interp_func = create_interpolation_function_cpsc(k_values, log10_m_over_H_values, deltaP_values)
+
+        self.CPSC_interp = interp_func
+
+    def initialize_pf_bump(self):
+        filename = 'cosmologies/bingo_results_bump.h5'
+
+        # Read data from the file
+        k_values, deltaN, deltaP_values = read_bingo_results(filename)
+
+        # Create the interpolation function
+        interp_func = create_interpolation_function_bump(k_values, deltaN, deltaP_values)
+
+        self.bump_interp = interp_func
+
+    def initialize_compressed(self, ps_filename):
+        """
+        Load the file with the products necessary to evaluate the theoretical power spectrum.
+
+        Args:
+            ps_filename (str): Name of the file containing the momentum array, linear power spectrum,
+                               smoothed linear power spectrum, and their ratio (O_lin).
+        """
+        try:
+            power_spec = np.loadtxt(ps_filename)
+        except:
+            raise ValueError(f"Problem loading the file: {ps_filename}")
+            sys.exit(-1)
+
+        kh_long, ps_smooth_points, O_lin_points, ps_lin_points = power_spec.T
+
+        # Store the values in the object
+        self.kh_long = kh_long        
+        self.ps_smooth = InterpolatedUnivariateSpline(kh_long, ps_smooth_points, ext=3)
+        self.O_lin = InterpolatedUnivariateSpline(kh_long, O_lin_points, ext=3)
+        self.ps_lin = InterpolatedUnivariateSpline(kh_long, ps_lin_points, ext=3)
+        self.P_norm = 1e3
+
+    def initialize_lpt_fixed(self, transfer_function, fz, kIR):
+        """
+        Load the transfer function for the LPT model.
+
+        Args:
+            transfer_function (str): The transfer function to be used.
+            fz (float): The redshift factor.
+            kIR (float): The IR cutoff scale.
+        """
+        try:
+            k, transfer = np.loadtxt(transfer_function, unpack=True)
+            transfer_func = interp1d(k, transfer)
+            self.transfer2_plin = transfer_func(self.k)**2*self.k**4 / (self.k**3/(2*np.pi**2))
+            self.transfer2_plin_ext = transfer_func(self.k_ext)**2*self.k_ext**4 / (self.k_ext**3/(2*np.pi**2))
+            self.fz = fz
+            self.kIR = kIR
+            
+        except:
+            raise ValueError(f"Problem loading the file: {transfer_function}")
+            sys.exit(-1)
 
     def DefineWindowFunction(self, winfunc):
         """
@@ -136,7 +235,7 @@ class PowerSpectrumConstructor:
         F_fog = 1.0 / (1.0 + 0.5 * _k**2 * sigma_s**2)**2
 
         # Theory - Broadband
-        invk_norm = self.k_norm / _k
+        invk_norm = self.kh_norm / _k
         theory_broadband = (
             a0 * invk_norm**3 + a1 * invk_norm**2 + a2 * invk_norm + a3 +
             (a4 * (_k)**2) * np.exp(-0.1 * _k**2)
@@ -276,7 +375,33 @@ class PowerSpectrumConstructor:
 
         # Interpolate deltaP using the interpolation function
         deltaP = Amp*self.CPSC_interp(np.log10(arg), log10_m_over_H, grid=False)
-        return Amp * deltaP
+        return deltaP
+    
+    def bump_deltaP(self,_k,params):
+        """
+        Compute the delta power spectrum for the 'bump' model.
+        The calculation is performed numerically by solving the MS equation using the code BINGO, then interpolated.
+
+        Args:
+            params (list): List of parameters [dP, N0, deltaN].
+
+        Returns:
+            array-like: The delta power spectrum.
+        """
+                
+        # Unpack the primordial features parameters
+        dP, N0, deltaN = params
+
+        # Amplitude modulation term
+        Amp = dP / 0.025
+        
+        arg = _k / np.exp(N0-15)
+
+        # Interpolate deltaP using the interpolation function
+        deltaP = Amp*self.bump_interp(np.log10(arg), np.log10(deltaN), grid=False)
+        
+        # Calculate the power spectrum with the feature
+        return deltaP
     
 #########################################################################################################    
     def BAO(self, _k, alpha):
@@ -305,7 +430,80 @@ class PowerSpectrumConstructor:
         """
         return np.exp(-0.5 * _k**2 * sigma_nl**2)
 
-    def Evaluate_bare(self, params):
+    def Evaluate_bare_ept_fixed(self, params):
+            """
+            Evaluate the bare power spectrum using the LPT with fixed transfer function
+
+            Args:
+                params (list): List of parameters [b1, b2, bs, b3, alpha0, alpha2, alpha4,
+                shot0, shot2, *deltaP_params].
+
+            Returns:
+                array-like: The evaluated power spectrum.
+            """ 
+
+            # Get the broadband + feature parameters
+            b1, b2, bs, b3, alpha0, alpha2, alpha4, alpha6, shot0, shot2, shot4, *deltaP_params = params
+
+            biases = [b1, b2, bs, b3]
+            cterms = [alpha0, alpha2, alpha4, alpha6]
+            stoch = [shot0, shot2, shot4]
+            pars = biases + cterms + stoch
+
+            # Compute delta_P (primordial feature)
+
+            if deltaP_params == []:
+                deltaP = self.PrimordialFeatureModels[self.pf_model](self.kh)
+            else:
+                deltaP = self.PrimordialFeatureModels[self.pf_model](self.kh, deltaP_params)
+
+            # BAO oscillations
+            BAO_oscillations = self.O_lin(self.kh) - 1
+            pnw = self.ps_smooth(self.kh)
+            plin = pnw * (1.0 + deltaP + deltaP * BAO_oscillations + BAO_oscillations)
+
+            ept = REPT(self.kh,plin, pnw=pnw, kmin = 5e-3, kmax = 0.25, nk = 1000,\
+            beyond_gauss=True, one_loop= True,\
+            N = 5000, extrap_min=-6, extrap_max=4, cutoff = 100, threads=1)
+            ks, p0, p2, p4 = ept.compute_redshift_space_power_multipoles(pars,self.fz)
+            p0 = interp1d(ks,p0)(self.kh)
+
+            return p0,plin,pnw
+    
+    def Evaluate_bare_lpt_fixed(self, params):
+            """
+            Evaluate the bare power spectrum using the LPT with fixed transfer function
+
+            Args:
+                params (list): List of parameters [As, ns, b1, b2, bs, b3, alpha0, alpha2, alpha4,
+                shot0, shot2, *deltaP_params].
+
+            Returns:
+                array-like: The evaluated power spectrum.
+            """ 
+            # Get the broadband + feature parameters
+            As, ns, b1, b2, bs, b3, alpha0, alpha2, alpha4, alpha6, shot0, shot2, shot4, *deltaP_params = params
+
+            biases = [b1, b2, bs, b3]
+            cterms = [alpha0, alpha2, alpha4, alpha6]
+            stoch = [shot0, shot2, shot4]
+            pars = biases + cterms + stoch
+
+            # Compute delta_P (primordial feature)
+
+            if deltaP_params == []:
+                deltaP = self.PrimordialFeatureModels[self.pf_model](self.kh)
+            else:
+                deltaP = self.PrimordialFeatureModels[self.pf_model](self.kh, deltaP_params)
+
+            plin = As * (self.k/self.k_norm)**(ns - 1)*(1.0 + deltaP) * self.transfer2_plin * self.h**3
+            lpt = LPT_RSD(self.kh,plin,kIR=self.kIR)
+            lpt.make_pltable(self.fz,nmax=6,apar=1,aperp=1, kv = self.kh)
+            kl,p0,p2,p4 = lpt.combine_bias_terms_pkell(pars)
+
+            return kl, p0, plin
+    
+    def Evaluate_bare_compressed(self, params):
         """
         Evaluate the bare power spectrum without applying the window function.
 
@@ -322,25 +520,25 @@ class PowerSpectrumConstructor:
         # Compute delta_P (primordial feature)
 
         if deltaP_params == []:
-            deltaP = self.PrimordialFeatureModels[self.model](self.k)
+            deltaP = self.PrimordialFeatureModels[self.pf_model](self.kh)
         else:
-            deltaP = self.PrimordialFeatureModels[self.model](self.k, deltaP_params)
+            deltaP = self.PrimordialFeatureModels[self.pf_model](self.kh, deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
-        P_nw = self.SmoothAmplitude(self.k, sigma_s, B, a0, a1, a2, a3, a4)
+        P_nw = self.SmoothAmplitude(self.kh, sigma_s, B, a0, a1, a2, a3, a4)
 
         # BAO oscillations
-        BAO_wiggles = self.BAO(self.k, alpha)
+        BAO_wiggles = self.BAO(self.kh, alpha)
 
         # Nonlinear Damping
-        nonlinear_damping = self.NonlinearDamping(self.k, sigma_nl)
+        nonlinear_damping = self.NonlinearDamping(self.kh, sigma_nl)
 
         # Final Result
         P0_bare = P_nw * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
 
         return P0_bare
         
-    def Evaluate_wincov(self, params):
+    def Evaluate_winconv_compressed(self, params):
         """
         Evaluate the power spectrum with window function convolution.
 
@@ -356,9 +554,9 @@ class PowerSpectrumConstructor:
         B, a0, a1, a2, a3, a4, alpha, sigma_nl, sigma_s, *deltaP_params = params
         
         if deltaP_params == []:
-            deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext)
+            deltaP = self.PrimordialFeatureModels[self.pf_model](self.kh_ext)
         else:
-            deltaP = self.PrimordialFeatureModels[self.model](self.kh_ext, deltaP_params)
+            deltaP = self.PrimordialFeatureModels[self.pf_model](self.kh_ext, deltaP_params)
 
         # Get the smooth power spectrum for NGC and SGC 
         P_nw = self.SmoothAmplitude(self.kh_ext, sigma_s, B, a0, a1, a2, a3, a4)
@@ -373,6 +571,6 @@ class PowerSpectrumConstructor:
         P0_bare = P_nw * (1 + (BAO_wiggles + deltaP + deltaP * BAO_wiggles) * nonlinear_damping)
 
         # Apply window function
-        P0 = self.ApplyWindowFunction(P0_bare, self.winfunc)(self.k)
+        P0 = self.ApplyWindowFunction(P0_bare, self.winfunc)(self.kh)
 
         return P0

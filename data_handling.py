@@ -164,7 +164,6 @@ def create_interpolation_function_bump(k_values, deltaN_values, deltaP_values):
     # Return the interpolated function
     return interp_func
 
-    
 # Function for the correction to the power spectrum with a feature
 def deltaPfeature_bump(k, dP, N0, deltaN, interp_func, pivot=0.05):
     
@@ -194,8 +193,6 @@ def create_interpolation_function_cpsc(k_values, log10_m_over_H_values, deltaP_v
     # Return the interpolated function
     return interp_func
 
-    
-    
 # Function for the correction to the power spectrum with a feature
 def deltaPfeature_cpsc(k, dP, N0, log10_m_over_h, interp_func, pivot=0.05):
     

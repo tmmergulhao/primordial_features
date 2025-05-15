@@ -634,8 +634,7 @@ class MCMC:
                 self.logger.info('Making a corner plot...')
                 self.plot_corner(handle=name, gelman_rubin=gelman_rubin, save=f'{name}_Corner')
                 self.logger.info('Done!')
-
-
+    
     def generate_chain_file_paths(self, handle: str, gelman: Optional[Dict] = None) -> List[str]:
         """
         Generate file paths for the MCMC chain files.
