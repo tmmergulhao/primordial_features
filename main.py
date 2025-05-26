@@ -375,7 +375,7 @@ if __name__ == '__main__':
         loc = mcmc.prior_bounds[0]
         scale = mcmc.prior_bounds[1] - mcmc.prior_bounds[0]
         prior = pc.Prior([uniform(loc[i], scale[i]) for i in range(len(loc))])
-        MULTIPROCESSING = False
+        
         if MULTIPROCESSING:
             with Pool(processes = PROCESSES) as pool:
                 sampler = pc.Sampler(
