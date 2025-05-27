@@ -208,6 +208,7 @@ class PowerSpectrumConstructor:
         Returns:
             InterpolatedUnivariateSpline: The power spectrum after applying the window function.
         """
+        
         # Put the theory in configuration space
         s, xi_bare = P2xi(self.kh_ext)(P_bare)
 

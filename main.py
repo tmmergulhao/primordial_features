@@ -25,7 +25,7 @@ parser.add_argument('--omega_max', type=float, required=False, help='Maximum val
 parser.add_argument('--handle', type=str, required=False, help='Add a prefix to the chains and log file')
 parser.add_argument('--processess', type=int, required=False, help='Number of processes to use')
 parser.add_argument('--debug',default=False, type=bool, required=False, help='Number of processes to use')
-parser.add_argument('--postprocess',default=True, type=bool, required=False, help='Post process the chains')
+parser.add_argument('--postprocess',type=str, required=False, help='Post process the chains')
 parser.add_argument('--run',default=True, type=str, required=False, help='Run the chain')
 parser.add_argument('--EZMOCK',default=False, type=str, required=False, help='Whether to use EZMocks')
 parser.add_argument('--sampler', default='emcee', type=str, required=False, help='Sampler to use')
@@ -67,6 +67,7 @@ reconstruction_flag = str(args.reconstruction).lower() in ['true', '1', 'yes']
 run_chain_flag = str(args.run).lower() in ['true', '1', 'yes']
 EZMOCK_flag = str(args.EZMOCK).lower() in ['true', '1', 'yes']
 debug_flag = str(args.debug).lower() in ['true', '1', 'yes']
+postprocess_flag = str(args.postprocess).lower() in ['true', '1', 'yes']
 
 data_mode = "POST" if reconstruction_flag else "PRE"
 
@@ -232,14 +233,6 @@ else:
 
 
 logger = logging.getLogger(__name__)
-
-"""
-# Configure the logger to use the new log file path
-logging.basicConfig(filename=log_filename,
-                    level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-"""
 # Log the variables
 logger.info(f'Processes: {PROCESSES}')
 logger.info(f'DATA NGC file: {DATA_NGC_file}')
@@ -364,9 +357,10 @@ mcmc.change_fig_dir(FIG_PATH)
 
 #Create the initial positions
 initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA) for _ in range(mcmc.gelman_rubin['N'])]
+
 if __name__ == '__main__':
-    if run_chain_flag:
-        if SAMPLER == 'emcee':
+    if SAMPLER == 'emcee':
+        if run_chain_flag:
             if MULTIPROCESSING:
                 # Create a multiprocessing pool
                 with Pool(processes = PROCESSES) as pool:
@@ -376,42 +370,58 @@ if __name__ == '__main__':
             else:
                 #Run the MCMC simulation with Gelman-Rubin convergence criteria
                 mcmc.run(handle, 1, initial_positions, logposterior, gelman_rubin=True, new=True, plots=True)
-        if SAMPLER == 'pocomc':
-            import pocomc as pc
-            from scipy.stats import uniform
+                
+    if SAMPLER == 'pocomc':
+        import pocomc as pc
+        from scipy.stats import uniform
 
-            loc = mcmc.prior_bounds[0]
-            scale = mcmc.prior_bounds[1] - mcmc.prior_bounds[0]
-            prior = pc.Prior([uniform(loc[i], scale[i]) for i in range(len(loc))])
-            
-            if MULTIPROCESSING:
-                with Pool(processes = PROCESSES) as pool:
-                    sampler = pc.Sampler(
-                    prior=prior,
-                    likelihood=logposterior_no_prior,
-                    vectorize=False,
-                    random_state=0,
-                    n_effective = 800,
-                    n_active = None,
-                    output_dir = CHAIN_DIR,
-                    output_label = handle,
-                    pool = pool
-                    )  
-                    sampler.run()
-            else:
+        loc = mcmc.prior_bounds[0]
+        scale = mcmc.prior_bounds[1] - mcmc.prior_bounds[0]
+        prior = pc.Prior([uniform(loc[i], scale[i]) for i in range(len(loc))])
+        
+        if MULTIPROCESSING:
+            with Pool(processes = PROCESSES) as pool:
                 sampler = pc.Sampler(
-                    prior=prior,
-                    likelihood=logposterior_no_prior,
-                    vectorize=False,
-                    random_state=0,
-                    n_effective = 800,
-                    n_active = None,
-                    output_dir = CHAIN_DIR,
-                    output_label = handle
+                prior=prior,
+                likelihood=logposterior_no_prior,
+                vectorize=False,
+                random_state=0,
+                n_effective = 800,
+                n_active = None,
+                output_dir = CHAIN_PATH,
+                output_label = handle,
+                pool = pool
                 )  
-                sampler.run()
-  
-    # After MCMC chains converge
+                if run_chain_flag:
+                    sampler.run(save_every=10,n_total= 150_000)
+        else:
+            sampler = pc.Sampler(
+                prior=prior,
+                likelihood=logposterior_no_prior,
+                vectorize=False,
+                random_state=0,
+                n_effective = 800,
+                n_active = None,
+                output_dir = CHAIN_PATH,
+                output_label = handle
+            )  
+            if run_chain_flag:
+                sampler.run(save_every=10,n_total = 150_000)
+        #sampler.load_state('/cosma8/data/dp322/dc-merg1/chains/BOSS_highz/DATA/CPSC_singlepol/13.7_20.0/new_sample_DATA_POST_BOSS_highz_CPSC_singlepol_13.7_20.0_450.state')
+        logger.info(f"Sampler finished. Output saved to {CHAIN_PATH}")
+        samples, weights, logl, logp = sampler.posterior()
+        np.save(os.path.join(CHAIN_PATH,'new_sample.npy'), samples)
+        np.save(os.path.join(CHAIN_PATH,'new_weights.npy'), weights)
+        np.save(os.path.join(CHAIN_PATH,'new_logl.npy'), logl)
+        np.save(os.path.join(CHAIN_PATH,'new_logp.npy'), logp)
+        logz, logz_err = sampler.evidence()
+        logger.info(f"logZ: {logz} ± {logz_err}")
+        import corner
+        import matplotlib.pyplot as plt
+        fig = corner.corner(samples, weights=weights, color="C0")
+        plt.savefig(os.path.join(CHAIN_PATH,'new_corner.png'))
+
+# After MCMC chains converge
     try:
         plot_results(
             mcmc=mcmc,
@@ -428,7 +438,7 @@ if __name__ == '__main__':
     except: 
         pass
     
-    if args.postprocess:
+    if postprocess_flag:
         FREQ_BIN = int(os.getenv('FREQ_BIN'))
         BINNING_AXIS = mcmc.id_map['omega']
 
