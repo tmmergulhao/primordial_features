@@ -273,12 +273,12 @@ if debug_flag:
     mcmc.set_gelman_rubin({
         "N":1,
         "epsilon":10,
-        "min_length":1000,
+        "min_length":5000,
         "convergence_steps":10
     })
     fn_wf_ngc = None
     fn_wf_sgc = None
-    
+    MULTIPROCESSING = False
 #********************** Defining the theory ********************************************************
 # Initialize the model for NGC
 ps_model_NGC = ps_constructor.PowerSpectrumConstructor(k, ps_filename=PLIN, pf_model=primordialfeature_model)
@@ -365,7 +365,6 @@ mcmc.change_fig_dir(FIG_PATH)
 #Create the initial positions
 initial_positions = [mcmc.create_walkers(initialize_walkers,x0 =X0,delta = DELTA) for _ in range(mcmc.gelman_rubin['N'])]
 if __name__ == '__main__':
-
     if run_chain_flag:
         if SAMPLER == 'emcee':
             if MULTIPROCESSING:
@@ -374,7 +373,9 @@ if __name__ == '__main__':
                     #Run the MCMC simulation with Gelman-Rubin convergence criteria and multiprocessing pool
                     mcmc.run(handle, 1, initial_positions, logposterior, pool=pool, 
                     gelman_rubin=True, new=True, plots=True)
-
+            else:
+                #Run the MCMC simulation with Gelman-Rubin convergence criteria
+                mcmc.run(handle, 1, initial_positions, logposterior, gelman_rubin=True, new=True, plots=True)
         if SAMPLER == 'pocomc':
             import pocomc as pc
             from scipy.stats import uniform
