@@ -57,12 +57,15 @@ if os.getenv('MODEL') == 'lin':
         return As*(k/0.05)**(ns-1)*(1 + np.sin(phi*np.pi+k*freq)*amp)
     prior_file = 'lin_singlepol_single_cap'
     prior_name = prior_file
-    OMEGA_MIN, OMEGA_MAX = 5,150
+    OMEGA_MIN, OMEGA_MAX = 5,220
+
 if os.getenv('MODEL')== 'log':
     def PK(k, As = As, ns = ns, amp = 0.1 , freq = OMEGA, phi = 0):
         return As*(k/0.05)**(ns-1)*(1 + np.sin(phi*np.pi+np.log(k/0.05)*freq)*amp)
     prior_file = 'log_singlepol_single_cap'
-    
+    prior_name = prior_file
+    OMEGA_MIN, OMEGA_MAX = 1,22
+
 # Retrieve the paths from the environment
 DATA_NGC_file = os.getenv('PK_NGC_POST_DATA')
 COV_NGC_file  = os.getenv('COV_NGC_POST')
@@ -150,7 +153,6 @@ lpt = LPT_RSD(kh,plin_feature[0],third_order=True,one_loop = True)
 lpt.make_pltable(fz[0],nmax=5,apar=1,aperp=1, kv = k_data)
 kl,p0_feature,p2_feature,p4_feature = lpt.combine_bias_terms_pkell(LPT_pars)
 
-
 def theory(x):
     return compressed_model.Evaluate_bare(x)
 
@@ -160,8 +162,9 @@ def logprob(x):
 compressed_model = ps_constructor.PowerSpectrumConstructor(k_data, ps_filename=os.getenv('PLIN'), pf_model= os.getenv('MODEL'), ps_style='compressed')
 like = likelihood.likelihoods(theory, p0_feature, invCOV)
 
-mcmc.prior_bounds[0][mcmc.id_map['omega']] = 1
-mcmc.prior_bounds[1][mcmc.id_map['omega']] = 50
+mcmc.prior_bounds[0][mcmc.id_map['omega']] = OMEGA_MIN
+mcmc.prior_bounds[1][mcmc.id_map['omega']] = OMEGA_MAX
+
 loc = mcmc.prior_bounds[0]
 scale = mcmc.prior_bounds[1] - mcmc.prior_bounds[0]
 prior = pocomc.Prior([uniform(loc[i], scale[i]) for i in range(len(loc))])
